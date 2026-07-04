@@ -1,0 +1,40 @@
+Running with: ./build/macos-scene/output/wwb-scene-renderer --window 0x0x320x180 --silent --noautomute --no-audio-processing --disable-mouse --disable-particles --screenshot /Users/lyu/01_Project/01_Projects/wallpaperengine-mac-renderer/.tmp/gpl-renderer-smoke/simple-scenes/id-MjQ2ODQ4OTIyMw.png --screenshot-delay 3 /Users/lyu/Library/Application Support/WorkshopWallpaperBridge/Assets/id-MjQ2ODQ4OTIyMw 
+Cannot find directory for steam app wallpaper_engine: assets
+Cannot find assets folder, continuing with virtual scene-only fallbacks: "/Users/lyu/01_Project/01_Projects/wallpaperengine-mac-renderer/build/macos-scene/output/assets"
+Stop requested by signal 15
+Stop requested by signal 15
+SDL_OpenAudioDevice: CoreAudio error (AudioQueueStart): -66681
+Unsupported puppet model header MDLV0013 in models/pecesmedianos_puppet.mdl
+CText: cannot read font 'fonts/Alcubierre.otf': filesystem error: Cannot find requested file in any of the mountpoints ["/fonts/Alcubierre.otf"], falling back to system font
+CText: no usable system font found
+Unsupported puppet model header MDLV0013 in models/lastpez_puppet.mdl
+CText: cannot read font 'fonts/Alcubierre.otf': filesystem error: Cannot find requested file in any of the mountpoints ["/fonts/Alcubierre.otf"], falling back to system font
+CText: no usable system font found
+Unsupported puppet model header MDLV0013 in models/fish_puppet.mdl
+GLSL fragment unit parsing Failed: ERROR: 0:82: 'ApplyBlending' : no matching overloaded function found 
+ERROR: 0:82: '' : compilation terminated 
+ERROR: 2 compilation errors.  No code generated.
+
+
+ERROR: Compiled vertex shader was corrupt.
+ERROR: Compiled fragment shader was corrupt.
+
+Failed to setup object 209: ERROR: Compiled vertex shader was corrupt.
+ERROR: Compiled fragment shader was corrupt.
+
+WARNING: Output of vertex shader 'v_TexCoord45' not read by fragment shader
+
+GLSL fragment unit parsing Failed: ERROR: 0:49: 'blur13a' : no matching overloaded function found 
+ERROR: 0:49: '' : missing #endif 
+ERROR: 0:49: '' : compilation terminated 
+ERROR: 3 compilation errors.  No code generated.
+
+
+ERROR: Compiled vertex shader was corrupt.
+ERROR: Compiled fragment shader was corrupt.
+
+Failed to setup object 301: ERROR: Compiled vertex shader was corrupt.
+ERROR: Compiled fragment shader was corrupt.
+
+Stopping
+libc++abi: terminating due to uncaught exception of type std::__1::system_error: mutex lock failed: Invalid argument

@@ -49,7 +49,11 @@ std::string Container::readString (const std::filesystem::path& path) const {
     const auto stream = this->read (path);
     std::stringstream buffer;
     buffer << stream->rdbuf ();
-    return buffer.str ();
+    auto content = buffer.str ();
+    if (content.empty ()) {
+	throw std::runtime_error ("File is empty: " + path.string ());
+    }
+    return content;
 }
 
 std::filesystem::path Container::physicalPath (const std::filesystem::path& path) const {

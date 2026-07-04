@@ -1,0 +1,51 @@
+Running with: ./build/macos-scene/output/wwb-scene-renderer --window 0x0x640x360 --silent --noautomute --no-audio-processing --disable-mouse --screenshot /Users/lyu/01_Project/01_Projects/wallpaperengine-mac-renderer/.tmp/gpl-renderer-smoke/painting-textures/painting.png --screenshot-delay 5 /Users/lyu/Library/Application Support/WorkshopWallpaperBridge/Assets/id-MjQ2ODQ4OTIyMw 
+Cannot find directory for steam app wallpaper_engine: assets
+Cannot find assets folder, continuing with virtual scene-only fallbacks: "/Users/lyu/01_Project/01_Projects/wallpaperengine-mac-renderer/build/macos-scene/output/assets"
+SDL_OpenAudioDevice: CoreAudio error (AudioQueueStart): -66681
+Resolved texture fondosinmuelle size=3840x2160 backing=4096x4096
+Resolved texture pecesmedianos size=930x447 backing=1024x512
+Loaded puppet mesh models/pecesmedianos_puppet.mdl version=MDLV0013 vertices=937 indices=4794
+Using fallback texture util/noflow
+Using fallback texture util/white
+Resolved texture masks/shake_mask_a659e77caae9d6359fec8af8206a0e6ce127ad65 size=465x223 backing=465x223
+CText: cannot read font 'fonts/Alcubierre.otf': filesystem error: Cannot find requested file in any of the mountpoints ["/fonts/Alcubierre.otf"], falling back to system font
+CText: no usable system font found
+Resolved texture pezmediano2trio size=941x2160 backing=1024x4096
+Resolved texture lastpez size=1145x726 backing=2048x1024
+Loaded puppet mesh models/lastpez_puppet.mdl version=MDLV0013 vertices=509 indices=2526
+Resolved texture pez4 size=4306x726 backing=8192x1024
+CText: cannot read font 'fonts/Alcubierre.otf': filesystem error: Cannot find requested file in any of the mountpoints ["/fonts/Alcubierre.otf"], falling back to system font
+CText: no usable system font found
+Resolved texture 2fish size=2559x2293 backing=4096x4096
+Using fallback texture util/black
+Resolved texture opacity_mask_1a2257adb44ee124e459745b3d42146f9981bfb0 size=1279x1146 backing=2048x2048
+Resolved texture 2fish2 size=2559x2293 backing=4096x4096
+Resolved texture opacity_mask_681d95af21112ea41fc4cd51aa49d9c553ef1173 size=1279x1146 backing=2048x2048
+Resolved texture fish size=760x872 backing=1024x1024
+Loaded puppet mesh models/fish_puppet.mdl version=MDLV0013 vertices=268 indices=1182
+Resolved texture masks/shake_mask_7bfb13f51be22746c08466c9bb8b3d1e108682d4 size=380x436 backing=380x436
+Resolved texture effects/waterripplenormal size=256x256 backing=256x256
+Resolved texture masks/waterripple_mask_a968d71e71f6fd89a028b4b125d2798a54db42ed size=1920x1080 backing=1920x1080
+Resolved texture particle/pezanimado size=50x70 backing=128x128
+Resolved texture Espuma size=3840x1236 backing=4096x2048
+Resolved texture effects/waterflowphase size=32x32 backing=32x32
+Resolved texture masks/waterflow_mask_14baecd88cd86197979e9592a3614e57bbd01235 size=1920x618 backing=1920x618
+Using fallback texture util/clouds_256
+Resolved texture workshop/2423477561/fluid noise size=1024x1024 backing=1024x1024
+Resolved texture sombra2 size=3840x1068 backing=4096x2048
+Resolved texture Solomuelle2 size=3840x1364 backing=4096x2048
+Resolved texture masks/shine_downsample2_mask_ee0d9bbc6d0516b8583c8fb3e841485c0b7ec4e8 size=200x200 backing=200x200
+WARNING: Output of vertex shader 'v_TexCoord45' not read by fragment shader
+
+Resolved texture masks/waterwaves_mask_681d95af21112ea41fc4cd51aa49d9c553ef1173 size=202x221 backing=202x221
+Resolved texture masks/shake_mask_843377ec5689457129ad9ee2dd9c051f084db05d size=202x221 backing=202x221
+Resolved texture waterwaves_mask_681d95af21112ea41fc4cd51aa49d9c553ef1173 size=202x221 backing=256x256
+Resolved texture masks/shake_mask_8b8f579747e6b7275c73e8356c48f21c13330d68 size=202x221 backing=202x221
+Resolved texture masks/shake_mask_bdbea347ab7838b0661ae6af118d7d24d301b354 size=202x221 backing=202x221
+Resolved texture masks/waterwaves_mask_2056d10e108144c65bea005697dd88d5b58d3b9d size=202x221 backing=202x221
+Using fallback texture particle/halo_6
+Using fallback texture particle/normal_ring_smooth
+Stop requested by signal 15
+Stop requested by signal 15
+Stopping
+libc++abi: terminating due to uncaught exception of type std::__1::system_error: mutex lock failed: Invalid argument

@@ -2,7 +2,11 @@
 #include "WallpaperEngine/Logging/Log.h"
 
 #include <cassert>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <memory>
+#include <regex>
 
 #include "SPIRV/GlslangToSpv.h"
 #include "glslang/Include/ResourceLimits.h"
@@ -10,6 +14,28 @@
 #include "spirv_glsl.hpp"
 
 using namespace WallpaperEngine::Render::Shaders;
+
+namespace {
+std::string removeSamplerBindings (const std::string& source) {
+    static const std::regex samplerBinding (R"(layout\s*\(\s*binding\s*=\s*\d+\s*\)\s*uniform\s+sampler2D\s+([A-Za-z_][A-Za-z0-9_]*)\s*;)");
+    return std::regex_replace (source, samplerBinding, "uniform sampler2D $1;");
+}
+
+void dumpFailedShader (const char* stage, const std::string& source) {
+    const char* dumpDir = std::getenv ("WPENGINE_DUMP_FAILED_SHADERS");
+    if (dumpDir == nullptr || dumpDir[0] == '\0') {
+	return;
+    }
+
+    try {
+	std::filesystem::create_directories (dumpDir);
+	const auto path = std::filesystem::path (dumpDir) / (std::string (stage) + ".glsl");
+	std::ofstream output (path);
+	output << source;
+    } catch (...) {
+    }
+}
+}
 
 TBuiltInResource BuiltInResource = { .maxLights = 32,
 				     .maxClipPlanes = 6,
@@ -144,6 +170,7 @@ std::pair<std::string, std::string> GLSLContext::toGlsl (const std::string& vert
     vertexShader.setAutoMapBindings (true);
 
     if (!vertexShader.parse (&BuiltInResource, 100, false, EShMsgDefault)) {
+	dumpFailedShader ("vertex", vertex);
 	sLog.error ("GLSL vertex unit parsing Failed: ", vertexShader.getInfoLog ());
 	return { "", "" };
     }
@@ -159,6 +186,7 @@ std::pair<std::string, std::string> GLSLContext::toGlsl (const std::string& vert
     fragmentShader.setAutoMapBindings (true);
 
     if (!fragmentShader.parse (&BuiltInResource, 100, false, EShMsgDefault)) {
+	dumpFailedShader ("fragment", fragment);
 	sLog.error ("GLSL fragment unit parsing Failed: ", fragmentShader.getInfoLog ());
 	return { "", "" };
     }
@@ -188,8 +216,8 @@ std::pair<std::string, std::string> GLSLContext::toGlsl (const std::string& vert
     options.es = false;
     fragmentCompiler.set_common_options (options);
 
-    return { vertexCompiler.compile () + "#if 0\n" + vertex + "\n#endif",
-	     fragmentCompiler.compile () + "#if 0\n" + fragment + "\n#endif" };
+    return { removeSamplerBindings (vertexCompiler.compile ()) + "#if 0\n" + vertex + "\n#endif",
+	     removeSamplerBindings (fragmentCompiler.compile ()) + "#if 0\n" + fragment + "\n#endif" };
 }
 
 std::unique_ptr<GLSLContext> GLSLContext::sInstance = nullptr;

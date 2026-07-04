@@ -3,6 +3,7 @@
 #include "CRenderable.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <cstring>
 #include <iterator>
 #include <optional>
@@ -433,16 +434,16 @@ bool CImage::loadPuppetMesh (const glm::vec2& size) {
 
 	constexpr size_t markerSize = 9;
 	constexpr size_t meshHeaderSize = sizeof (uint32_t) * 2;
-	constexpr size_t vertexStride = 80;
 	constexpr size_t positionOffset = 0;
-	constexpr size_t uvOffset = 72;
 
 	const std::string puppetVersion
 	    = data.size () >= markerSize ? std::string (data.data (), strlen ("MDLV0021")) : "";
-	if (puppetVersion != "MDLV0021" && puppetVersion != "MDLV0023") {
+	if (puppetVersion != "MDLV0013" && puppetVersion != "MDLV0021" && puppetVersion != "MDLV0023") {
 	    sLog.error ("Unsupported puppet model header ", puppetVersion, " in ", *this->getImage ().model->puppet);
 	    return false;
 	}
+	const size_t vertexStride = puppetVersion == "MDLV0013" ? 52 : 80;
+	const size_t uvOffset = puppetVersion == "MDLV0013" ? 44 : 72;
 
 	const size_t mdlsOffset = [&data] () -> size_t {
 	    for (size_t offset = markerSize; offset + strlen ("MDLS") < data.size (); offset++) {
@@ -920,6 +921,13 @@ void CImage::render () {
 
     // Always update screen transform (handles rotation + parallax dynamically)
     this->updateScreenSpacePosition ();
+
+    if (std::getenv ("WPENGINE_TRACE_IMAGE_RENDER") != nullptr) {
+	sLog.out (
+	    "Rendering image id=", this->getId (), " name=", this->getImage ().name,
+	    " puppet=", this->m_hasPuppetMesh ? "yes" : "no", " passes=", this->m_passes.size ()
+	);
+    }
 
 #if !NDEBUG
     std::string str = "Image ";

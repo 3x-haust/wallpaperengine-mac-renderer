@@ -3,7 +3,6 @@
 #include "Steam/FileSystem/FileSystem.h"
 #include "WallpaperEngine/Application/ApplicationState.h"
 #include "WallpaperEngine/Assets/AssetLoadException.h"
-#include "WallpaperEngine/Audio/Drivers/Detectors/PulseAudioPlayingDetector.h"
 #include "WallpaperEngine/FileSystem/Container.h"
 #include "WallpaperEngine/Logging/Log.h"
 #include "WallpaperEngine/Render/Drivers/VideoFactories.h"
@@ -16,7 +15,10 @@
 #include "WallpaperEngine/Data/Model/Wallpaper.h"
 #include "WallpaperEngine/Debugging/CallStack.h"
 #include "WallpaperEngine/FileSystem/Adapters/MediaCover.h"
+#ifndef WPENGINE_SCENE_ONLY
+#include "WallpaperEngine/Audio/Drivers/Detectors/PulseAudioPlayingDetector.h"
 #include "WallpaperEngine/Media/DBusMediaSource.h"
+#endif
 
 #if DEMOMODE
 #include "recording.h"
@@ -25,6 +27,7 @@
 #include <algorithm>
 #include <climits>
 #include <numeric>
+#include <sstream>
 #include <unistd.h>
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>
@@ -40,6 +43,64 @@ using namespace WallpaperEngine::Assets;
 using namespace WallpaperEngine::Application;
 using namespace WallpaperEngine::Data::Model;
 using namespace WallpaperEngine::FileSystem;
+
+#ifdef WPENGINE_SCENE_ONLY
+namespace {
+class NullMediaSource final : public WallpaperEngine::Media::MediaSource {
+public:
+    NullMediaSource () : MediaSource (std::chrono::milliseconds (2000)) { }
+
+private:
+    void performUpdate () override { }
+};
+
+const std::vector<std::filesystem::path>& requiredEngineAssetPaths () {
+    static const std::vector<std::filesystem::path> paths = {
+	"models/util/composelayer.json",
+	"materials/util/composelayer.json",
+	"materials/util/effectpassthrough.json",
+	"materials/util/downsample_quarter_bloom.json",
+	"materials/util/downsample_eighth_blur_v.json",
+	"materials/util/blur_h_bloom.json",
+	"materials/util/combine.json",
+	"shaders/genericimage2.frag",
+	"shaders/genericimage2.vert",
+	"shaders/common_blur.h",
+	"shaders/genericparticle.vert",
+	"shaders/genericparticle.frag",
+    };
+    return paths;
+}
+
+std::vector<std::filesystem::path> missingEngineAssetPaths (const std::filesystem::path& assetsPath) {
+    std::vector<std::filesystem::path> missing;
+
+    if (!std::filesystem::is_directory (assetsPath) || std::filesystem::is_symlink (assetsPath)) {
+	missing.emplace_back ("<assets-dir>");
+    }
+
+    for (const auto& relativePath : requiredEngineAssetPaths ()) {
+	const auto candidate = assetsPath / relativePath;
+	if (!std::filesystem::is_regular_file (candidate) || std::filesystem::is_symlink (candidate)) {
+	    missing.emplace_back (relativePath);
+	}
+    }
+
+    return missing;
+}
+
+std::string joinMissingEngineAssets (const std::vector<std::filesystem::path>& missing) {
+    std::ostringstream output;
+    for (std::size_t i = 0; i < missing.size (); ++i) {
+	if (i != 0) {
+	    output << ",";
+	}
+	output << missing[i].string ();
+    }
+    return output.str ();
+}
+}
+#endif
 
 void CustomGLDebugCallback (
     GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar* message, const void* userParam
@@ -71,8 +132,12 @@ WallpaperApplication::WallpaperApplication (ApplicationContext& context) : m_con
 }
 
 void WallpaperApplication::initializeSubsystems () {
+#ifdef WPENGINE_SCENE_ONLY
+    m_mediaSource = std::make_unique<NullMediaSource> ();
+#else
     // initialize player dbus (update every 2 seconds)
     m_mediaSource = std::make_unique<WallpaperEngine::Media::DBusMediaSource> (std::chrono::milliseconds (2000));
+#endif
 }
 
 AssetLocatorUniquePtr WallpaperApplication::setupAssetLocator (const std::string& bg) const {
@@ -95,8 +160,24 @@ AssetLocatorUniquePtr WallpaperApplication::setupAssetLocator (const std::string
     try {
 	container->mount (this->m_context.settings.general.assets, "/");
     } catch (std::runtime_error&) {
+#ifdef WPENGINE_SCENE_ONLY
+	throw std::runtime_error (
+	    "Cannot find a valid Wallpaper Engine assets folder at " + this->m_context.settings.general.assets.string ()
+	);
+#else
 	sLog.exception ("Cannot find a valid assets folder, resolved to ", this->m_context.settings.general.assets);
+#endif
     }
+
+#ifdef WPENGINE_SCENE_ONLY
+    const auto missingEngineAssets = missingEngineAssetPaths (this->m_context.settings.general.assets);
+    if (!missingEngineAssets.empty ()) {
+	throw std::runtime_error (
+	    "Wallpaper Engine assets folder is incomplete at " + this->m_context.settings.general.assets.string ()
+	    + "; missing " + joinMissingEngineAssets (missingEngineAssets)
+	);
+    }
+#endif
 
     // mount the current directory as root
     try {
@@ -142,7 +223,7 @@ AssetLocatorUniquePtr WallpaperApplication::setupAssetLocator (const std::string
 	  } }
     );
 
-    vfs.add ("models/wpenginelinux.json", { { "material", "materials/wpenginelinux.json" } });
+    vfs.add ("models/wpenginelinux.json", R"({"material":"materials/wpenginelinux.json","passthrough":true})");
 
     vfs.add (
 	"materials/wpenginelinux.json",
@@ -154,7 +235,7 @@ AssetLocatorUniquePtr WallpaperApplication::setupAssetLocator (const std::string
 		    { "depthwrite", "disabled" },
 		    { "shader", "genericimage2" },
 		    { "textures", JSON::array ({ "_rt_FullFrameBuffer" }) } } }
-	    ) } }
+	) } }
     );
 
     vfs.add (
@@ -320,6 +401,9 @@ void WallpaperApplication::initializePlaylists () {
 }
 
 void WallpaperApplication::ensureBrowserForProject (const Project& project) {
+#ifdef WPENGINE_SCENE_ONLY
+    (void) project;
+#else
     if (!project.wallpaper->is<Web> ()) {
 	return;
     }
@@ -327,6 +411,7 @@ void WallpaperApplication::ensureBrowserForProject (const Project& project) {
     if (!this->m_browserContext) {
 	this->m_browserContext = std::make_unique<WebBrowser::WebBrowserContext> (*this);
     }
+#endif
 }
 
 bool WallpaperApplication::makeAnyViewportCurrent () const {
@@ -448,12 +533,17 @@ void WallpaperApplication::advancePlaylist (
 
 	if (this->m_renderContext) {
 	    this->m_renderContext->setWallpaper (
-		screen,
-		WallpaperEngine::Render::CWallpaper::fromWallpaper (
-		    *this->m_backgrounds[screen]->wallpaper, *this->m_renderContext, *this->m_audioContext,
-		    this->m_browserContext.get (), scaling, clamp
-		)
-	    );
+		    screen,
+		    WallpaperEngine::Render::CWallpaper::fromWallpaper (
+			*this->m_backgrounds[screen]->wallpaper, *this->m_renderContext, *this->m_audioContext,
+#ifdef WPENGINE_SCENE_ONLY
+			nullptr,
+#else
+			this->m_browserContext.get (),
+#endif
+			scaling, clamp
+		    )
+		);
 	}
 
 	this->m_context.settings.general.screenBackgrounds[screen] = nextPath;
@@ -524,6 +614,9 @@ void WallpaperApplication::setupProperties () {
 }
 
 void WallpaperApplication::setupBrowser () {
+#ifdef WPENGINE_SCENE_ONLY
+    return;
+#else
     bool anyWebProject = std::any_of (
 	this->m_backgrounds.begin (), this->m_backgrounds.end (),
 	[] (const std::pair<const std::string, ProjectUniquePtr>& pair) -> bool {
@@ -537,6 +630,7 @@ void WallpaperApplication::setupBrowser () {
     }
 
     this->m_browserContext = std::make_unique<WebBrowser::WebBrowserContext> (*this);
+#endif
 }
 
 void WallpaperApplication::takeScreenshot (const std::filesystem::path& filename) const {
@@ -666,12 +760,13 @@ void WallpaperApplication::takeScreenshot (const std::filesystem::path& filename
 void WallpaperApplication::setupOutput () {
     const char* XDG_SESSION_TYPE = getenv ("XDG_SESSION_TYPE");
 
-    if (!XDG_SESSION_TYPE) {
+    if (!XDG_SESSION_TYPE && this->m_context.settings.render.mode == ApplicationContext::DESKTOP_BACKGROUND) {
 	sLog.exception (
 	    "Cannot read environment variable XDG_SESSION_TYPE, window server detection failed. Please ensure proper "
 	    "values are set"
 	);
     }
+    const std::string sessionType = XDG_SESSION_TYPE ? XDG_SESSION_TYPE : DEFAULT_WINDOW_NAME;
 
     sLog.debug ("Checking for window servers: ");
 
@@ -680,10 +775,10 @@ void WallpaperApplication::setupOutput () {
     }
 
     this->m_videoDriver = sVideoFactories.createVideoDriver (
-	this->m_context.settings.render.mode, XDG_SESSION_TYPE, this->m_context, *this
+	this->m_context.settings.render.mode, sessionType, this->m_context, *this
     );
     this->m_fullScreenDetector
-	= sVideoFactories.createFullscreenDetector (XDG_SESSION_TYPE, this->m_context, *this->m_videoDriver);
+	= sVideoFactories.createFullscreenDetector (sessionType, this->m_context, *this->m_videoDriver);
 }
 
 void WallpaperApplication::setupAudio () {
@@ -695,16 +790,26 @@ void WallpaperApplication::setupAudio () {
     );
 
     if (audioProcessingRequired && this->m_context.settings.audio.audioprocessing) {
+#ifdef WPENGINE_SCENE_ONLY
+	this->m_audioRecorder = std::make_unique<WallpaperEngine::Audio::Drivers::Recorders::PlaybackRecorder> ();
+#else
 	this->m_audioRecorder
 	    = std::make_unique<WallpaperEngine::Audio::Drivers::Recorders::PulseAudioPlaybackRecorder> ();
+#endif
     } else {
 	this->m_audioRecorder = std::make_unique<WallpaperEngine::Audio::Drivers::Recorders::PlaybackRecorder> ();
     }
 
     if (this->m_context.settings.audio.automute) {
+#ifdef WPENGINE_SCENE_ONLY
+	m_audioDetector = std::make_unique<WallpaperEngine::Audio::Drivers::Detectors::AudioPlayingDetector> (
+	    this->m_context, *this->m_fullScreenDetector
+	);
+#else
 	m_audioDetector = std::make_unique<WallpaperEngine::Audio::Drivers::Detectors::PulseAudioPlayingDetector> (
 	    this->m_context, *this->m_fullScreenDetector
 	);
+#endif
     } else {
 	m_audioDetector = std::make_unique<WallpaperEngine::Audio::Drivers::Detectors::AudioPlayingDetector> (
 	    this->m_context, *this->m_fullScreenDetector
@@ -742,7 +847,13 @@ void WallpaperApplication::prepareOutputs () {
 	m_renderContext->setWallpaper (
 	    background,
 	    WallpaperEngine::Render::CWallpaper::fromWallpaper (
-		*info->wallpaper, *m_renderContext, *m_audioContext, m_browserContext.get (), scaling, clamp
+		*info->wallpaper, *m_renderContext, *m_audioContext,
+#ifdef WPENGINE_SCENE_ONLY
+		nullptr,
+#else
+		m_browserContext.get (),
+#endif
+		scaling, clamp
 	    )
 	);
     }
@@ -800,7 +911,13 @@ void WallpaperApplication::prepareOutputs () {
 
 	// Create one shared wallpaper with the span group's scaling mode
 	auto sharedWallpaper = WallpaperEngine::Render::CWallpaper::fromWallpaper (
-	    *bgIt->second->wallpaper, *m_renderContext, *m_audioContext, m_browserContext.get (), spanGroup.scaling,
+	    *bgIt->second->wallpaper, *m_renderContext, *m_audioContext,
+#ifdef WPENGINE_SCENE_ONLY
+	    nullptr,
+#else
+	    m_browserContext.get (),
+#endif
+	    spanGroup.scaling,
 	    spanGroup.clamp
 	);
 

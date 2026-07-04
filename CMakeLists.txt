@@ -12,6 +12,8 @@ set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/CMakeModules")
 set(OpenGL_GL_PREFERENCE "LEGACY")
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+option(WPENGINE_SCENE_ONLY "Build a scene/window renderer without Linux desktop, web, or PulseAudio backends" OFF)
+
 # puts the app in demomode, which records a 5 second webm video and quits
 if(NOT DEMOMODE)
     set(DEMOMODE 0)
@@ -24,26 +26,33 @@ endif()
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-narrowing")
 
-find_package(X11)
+if(NOT WPENGINE_SCENE_ONLY)
+    find_package(X11)
+endif()
 find_package(OpenGL REQUIRED)
 find_package(GLEW REQUIRED)
 
-find_package(DBus REQUIRED)
 find_package(GLUT REQUIRED)
 find_package(ZLIB REQUIRED)
 find_package(SDL2 REQUIRED)
 find_package(MPV REQUIRED)
 find_package(LZ4 REQUIRED)
 find_package(FFMPEG REQUIRED)
-find_package(PulseAudio REQUIRED)
 find_package(Freetype REQUIRED)
+find_library(GLFW_LIBRARY glfw REQUIRED)
+
+if(NOT WPENGINE_SCENE_ONLY)
+    find_package(DBus REQUIRED)
+    find_package(PulseAudio REQUIRED)
+endif()
 
 set(ENABLE_OPT OFF)
 set(SPIRV_CROSS_FORCE_PIC ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-set(KISSFFT_TEST OFF)
-set(KISSFFT_TOOLS OFF)
+set(KISSFFT_TEST OFF CACHE BOOL "" FORCE)
+set(KISSFFT_TOOLS OFF CACHE BOOL "" FORCE)
 
+if(NOT WPENGINE_SCENE_ONLY)
 # Download CEF of specified version for current platform
 # Specify the CEF distribution version.
 set(CEF_VERSION "135.0.17+gcbc1c5b+chromium-135.0.7049.52")
@@ -141,6 +150,16 @@ set(CMAKE_INSTALL_RPATH "\$ORIGIN;\$ORIGIN/lib;\$ORIGIN/lib64")
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH FALSE)
 
 add_subdirectory(${CEF_LIBCEF_DLL_WRAPPER_PATH} libcef_dll_wrapper)
+endif()
+
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/output)
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/lib)
+set(TARGET_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/output)
+
+set(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE)
+set(CMAKE_INSTALL_RPATH "\$ORIGIN;\$ORIGIN/lib;\$ORIGIN/lib64")
+set(CMAKE_INSTALL_RPATH_USE_LINK_PATH FALSE)
+
 add_subdirectory(src/External/glslang-WallpaperEngine glslang)
 add_subdirectory(src/External/SPIRV-Cross-WallpaperEngine spirv-cross)
 add_subdirectory(src/External/kissfft kissfft)
@@ -153,7 +172,7 @@ endif()
 # try to enable wayland builds when possible
 pkg_check_modules(WAYLAND_SUPPORT wayland-cursor wayland-protocols egl wayland-egl)
 
-if(WAYLAND_SUPPORT_FOUND)
+if(NOT WPENGINE_SCENE_ONLY AND WAYLAND_SUPPORT_FOUND)
     find_program(WaylandScanner NAMES wayland-scanner)
     message(STATUS "Found WaylandScanner at ${WaylandScanner}")
     execute_process(
@@ -213,7 +232,7 @@ if(WAYLAND_SUPPORT_FOUND)
         ${WAYLAND_OUTPUT_DIR}/xdg-output-unstable-v1-protocol.h)
 endif()
 
-if(X11_FOUND)
+if(NOT WPENGINE_SCENE_ONLY AND X11_FOUND)
     if(NOT X11_Xrandr_FOUND)
         message(WARNING "X11 support disabled. Xrandr package is missing")
         set(X11_SUPPORT_FOUND FALSE)
@@ -253,12 +272,14 @@ if(NOT WAYLAND_SUPPORT_FOUND AND NOT X11_SUPPORT_FOUND)
     message(WARNING "No window server detected at build time. You will only be able to preview backgrounds")
 endif()
 
-add_library(ceflib SHARED IMPORTED)
-set_target_properties(ceflib
-        PROPERTIES IMPORTED_LOCATION ${TARGET_OUTPUT_DIRECTORY}/libcef.so)
+if(NOT WPENGINE_SCENE_ONLY)
+    add_library(ceflib SHARED IMPORTED)
+    set_target_properties(ceflib
+            PROPERTIES IMPORTED_LOCATION ${TARGET_OUTPUT_DIRECTORY}/libcef.so)
 
-ADD_LOGICAL_TARGET(libcef_lib "${CEF_LIB_DEBUG}" "${CEF_LIB_RELEASE}")
-PRINT_CEF_CONFIG()
+    ADD_LOGICAL_TARGET(libcef_lib "${CEF_LIB_DEBUG}" "${CEF_LIB_RELEASE}")
+    PRINT_CEF_CONFIG()
+endif()
 
 # Embed scene-script builtins (builtins.js) into a generated header, so the JS can
 # live in its own file (lint/syntax-highlight friendly) instead of an inline literal.
@@ -288,11 +309,15 @@ include_directories(
     ${LZ4_INCLUDE_DIR}
     ${SDL2_INCLUDE_DIRS}
     ${FFMPEG_INCLUDE_DIR}
-    ${PULSEAUDIO_INCLUDE_DIR}
-    ${CEF_INCLUDE_PATH}
     ${CMAKE_SOURCE_DIR}
     ${X11_INCLUDES}
     ${DBUS_INCLUDE_DIRS})
+
+if(NOT WPENGINE_SCENE_ONLY)
+    include_directories(
+        ${PULSEAUDIO_INCLUDE_DIR}
+        ${CEF_INCLUDE_PATH})
+endif()
 
 set(COMMON_SOURCES
     src/External/MimeTypes/MimeTypes.cpp
@@ -329,13 +354,9 @@ set(COMMON_SOURCES
     src/WallpaperEngine/FileSystem/Adapters/MediaCover.h
     src/WallpaperEngine/FileSystem/Adapters/MediaCover.cpp
 
-    src/WallpaperEngine/Audio/Drivers/Recorders/PulseAudioPlaybackRecorder.cpp
-    src/WallpaperEngine/Audio/Drivers/Recorders/PulseAudioPlaybackRecorder.h
     src/WallpaperEngine/Audio/Drivers/Recorders/PlaybackRecorder.cpp
     src/WallpaperEngine/Audio/Drivers/Recorders/PlaybackRecorder.h
 
-    src/WallpaperEngine/Audio/Drivers/Detectors/PulseAudioPlayingDetector.cpp
-    src/WallpaperEngine/Audio/Drivers/Detectors/PulseAudioPlayingDetector.h
     src/WallpaperEngine/Audio/Drivers/Detectors/AudioPlayingDetector.cpp
     src/WallpaperEngine/Audio/Drivers/Detectors/AudioPlayingDetector.h
 
@@ -356,9 +377,6 @@ set(COMMON_SOURCES
 
     src/WallpaperEngine/Media/MediaSource.h
     src/WallpaperEngine/Media/MediaSource.cpp
-    src/WallpaperEngine/Media/DBusMediaSource.h
-    src/WallpaperEngine/Media/DBusMediaSource.cpp
-
     src/WallpaperEngine/Render/Shaders/Variables/ShaderVariable.h
     src/WallpaperEngine/Render/Shaders/Variables/ShaderVariable.cpp
     src/WallpaperEngine/Render/Shaders/Variables/ShaderVariableFloat.h
@@ -418,8 +436,6 @@ set(COMMON_SOURCES
     src/WallpaperEngine/Render/Wallpapers/CScene.cpp
     src/WallpaperEngine/Render/Wallpapers/CVideo.h
     src/WallpaperEngine/Render/Wallpapers/CVideo.cpp
-    src/WallpaperEngine/Render/Wallpapers/CWeb.h
-    src/WallpaperEngine/Render/Wallpapers/CWeb.cpp
     src/WallpaperEngine/Render/Camera.h
     src/WallpaperEngine/Render/Camera.cpp
     src/WallpaperEngine/Render/CObject.h
@@ -445,21 +461,6 @@ set(COMMON_SOURCES
     src/WallpaperEngine/Render/CFBO.cpp
     src/WallpaperEngine/Render/Objects/Effects/CPass.h
     src/WallpaperEngine/Render/Objects/Effects/CPass.cpp
-
-    src/WallpaperEngine/WebBrowser/CEF/RenderHandler.cpp
-    src/WallpaperEngine/WebBrowser/CEF/RenderHandler.h
-    src/WallpaperEngine/WebBrowser/CEF/BrowserClient.cpp
-    src/WallpaperEngine/WebBrowser/CEF/BrowserClient.h
-    src/WallpaperEngine/WebBrowser/CEF/BrowserApp.cpp
-    src/WallpaperEngine/WebBrowser/CEF/BrowserApp.h
-    src/WallpaperEngine/WebBrowser/CEF/SubprocessApp.cpp
-    src/WallpaperEngine/WebBrowser/CEF/SubprocessApp.h
-    src/WallpaperEngine/WebBrowser/CEF/WPSchemeHandlerFactory.cpp
-    src/WallpaperEngine/WebBrowser/CEF/WPSchemeHandlerFactory.h
-    src/WallpaperEngine/WebBrowser/CEF/WPSchemeHandler.cpp
-    src/WallpaperEngine/WebBrowser/CEF/WPSchemeHandler.h
-    src/WallpaperEngine/WebBrowser/WebBrowserContext.cpp
-    src/WallpaperEngine/WebBrowser/WebBrowserContext.h
 
     src/WallpaperEngine/Data/Assets/Types.h
     src/WallpaperEngine/Data/Assets/Texture.h
@@ -550,6 +551,32 @@ set(COMMON_SOURCES
     src/WallpaperEngine/Maths.h
     src/WallpaperEngine/Maths.cpp)
 
+if(NOT WPENGINE_SCENE_ONLY)
+    list(APPEND COMMON_SOURCES
+        src/WallpaperEngine/Audio/Drivers/Recorders/PulseAudioPlaybackRecorder.cpp
+        src/WallpaperEngine/Audio/Drivers/Recorders/PulseAudioPlaybackRecorder.h
+        src/WallpaperEngine/Audio/Drivers/Detectors/PulseAudioPlayingDetector.cpp
+        src/WallpaperEngine/Audio/Drivers/Detectors/PulseAudioPlayingDetector.h
+        src/WallpaperEngine/Media/DBusMediaSource.h
+        src/WallpaperEngine/Media/DBusMediaSource.cpp
+        src/WallpaperEngine/Render/Wallpapers/CWeb.h
+        src/WallpaperEngine/Render/Wallpapers/CWeb.cpp
+        src/WallpaperEngine/WebBrowser/CEF/RenderHandler.cpp
+        src/WallpaperEngine/WebBrowser/CEF/RenderHandler.h
+        src/WallpaperEngine/WebBrowser/CEF/BrowserClient.cpp
+        src/WallpaperEngine/WebBrowser/CEF/BrowserClient.h
+        src/WallpaperEngine/WebBrowser/CEF/BrowserApp.cpp
+        src/WallpaperEngine/WebBrowser/CEF/BrowserApp.h
+        src/WallpaperEngine/WebBrowser/CEF/SubprocessApp.cpp
+        src/WallpaperEngine/WebBrowser/CEF/SubprocessApp.h
+        src/WallpaperEngine/WebBrowser/CEF/WPSchemeHandlerFactory.cpp
+        src/WallpaperEngine/WebBrowser/CEF/WPSchemeHandlerFactory.h
+        src/WallpaperEngine/WebBrowser/CEF/WPSchemeHandler.cpp
+        src/WallpaperEngine/WebBrowser/CEF/WPSchemeHandler.h
+        src/WallpaperEngine/WebBrowser/WebBrowserContext.cpp
+        src/WallpaperEngine/WebBrowser/WebBrowserContext.h)
+endif()
+
 if(BUILD_TESTING)
     add_executable(
         tests
@@ -584,20 +611,24 @@ target_link_libraries (linux-wallpaperengine-lib PUBLIC
     ${SDL2_LIBRARIES}
     ${FFMPEG_LIBRARIES}
     ${MPV_LIBRARY}
-    ${PULSEAUDIO_LIBRARY}
     Freetype::Freetype
     ${WAYLAND_LIBRARIES}
     ${X11_LIBRARIES}
-    ${DBUS_LIBRARIES}
     kissfft
     glslang
     spirv-cross-core
     spirv-cross-glsl
-    glfw
-    libcef_lib
-    libcef_dll_wrapper
+    ${GLFW_LIBRARY}
     argparse
     qjs)
+
+if(NOT WPENGINE_SCENE_ONLY)
+    target_link_libraries(linux-wallpaperengine-lib PUBLIC
+        ${PULSEAUDIO_LIBRARY}
+        ${DBUS_LIBRARIES}
+        libcef_lib
+        libcef_dll_wrapper)
+endif()
 
 if (BUILD_TESTING)
     target_link_libraries (tests PRIVATE
@@ -619,7 +650,7 @@ if (BUILD_TESTING)
         glslang
         spirv-cross-core
         spirv-cross-glsl
-        glfw
+        ${GLFW_LIBRARY}
         libcef_lib
         libcef_dll_wrapper
         argparse
@@ -628,6 +659,9 @@ endif()
 
 target_compile_definitions(linux-wallpaperengine-lib PUBLIC ERRORONLY=${ERRORONLY})
 target_compile_definitions(linux-wallpaperengine-lib PUBLIC DEMOMODE=${DEMOMODE})
+if(WPENGINE_SCENE_ONLY)
+    target_compile_definitions(linux-wallpaperengine-lib PUBLIC WPENGINE_SCENE_ONLY=1)
+endif()
 
 if (BUILD_TESTING)
     # tests should give as much output as possible
@@ -667,25 +701,40 @@ target_include_directories(linux-wallpaperengine-lib PUBLIC
     ${LZ4_INCLUDE_DIR}
     ${SDL2_INCLUDE_DIRS}
     ${FFMPEG_INCLUDE_DIR}
-    ${PULSEAUDIO_INCLUDE_DIR}
-    ${CEF_INCLUDE_PATH}
     ${CMAKE_SOURCE_DIR}
     ${X11_INCLUDES}
     ${WAYLAND_OUTPUT_DIR})
 
-COPY_FILES(linux-wallpaperengine-lib "${CEF_BINARY_FILES}" "${CEF_BINARY_DIR}" "${TARGET_OUTPUT_DIRECTORY}")
-COPY_FILES(linux-wallpaperengine-lib "${CEF_RESOURCE_FILES}" "${CEF_RESOURCE_DIR}" "${TARGET_OUTPUT_DIRECTORY}")
-# remove the vulkan lib as chromium includes a broken libvulkan.so.1 with it
-file(REMOVE "${CEF_BINARY_DIR}/libvulkan.so.1")
+if(NOT WPENGINE_SCENE_ONLY)
+    target_include_directories(linux-wallpaperengine-lib PUBLIC
+        ${PULSEAUDIO_INCLUDE_DIR}
+        ${CEF_INCLUDE_PATH})
+endif()
+
+if(NOT WPENGINE_SCENE_ONLY)
+    COPY_FILES(linux-wallpaperengine-lib "${CEF_BINARY_FILES}" "${CEF_BINARY_DIR}" "${TARGET_OUTPUT_DIRECTORY}")
+    COPY_FILES(linux-wallpaperengine-lib "${CEF_RESOURCE_FILES}" "${CEF_RESOURCE_DIR}" "${TARGET_OUTPUT_DIRECTORY}")
+    # remove the vulkan lib as chromium includes a broken libvulkan.so.1 with it
+    file(REMOVE "${CEF_BINARY_DIR}/libvulkan.so.1")
+endif()
 set_target_properties(linux-wallpaperengine-lib PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${TARGET_OUTPUT_DIRECTORY})
 
-add_dependencies(linux-wallpaperengine-lib libcef_dll_wrapper glslang spirv-cross-core spirv-cross-glsl)
-# custom version of cef's SET_EXECUTABLE_TARGET_PROPERTIES that fixes C files being compiled with the wrong parameters
-REPLACED_SET_EXECUTABLE_TARGET_PROPERTIES(linux-wallpaperengine-lib)
+add_dependencies(linux-wallpaperengine-lib glslang spirv-cross-core spirv-cross-glsl)
+if(NOT WPENGINE_SCENE_ONLY)
+    add_dependencies(linux-wallpaperengine-lib libcef_dll_wrapper)
+endif()
+if(NOT WPENGINE_SCENE_ONLY)
+    # custom version of cef's SET_EXECUTABLE_TARGET_PROPERTIES that fixes C files being compiled with the wrong parameters
+    REPLACED_SET_EXECUTABLE_TARGET_PROPERTIES(linux-wallpaperengine-lib)
+endif()
 
 add_executable(linux-wallpaperengine
     src/main.cpp)
+
+if(WPENGINE_SCENE_ONLY)
+    set_target_properties(linux-wallpaperengine PROPERTIES OUTPUT_NAME wwb-scene-renderer)
+endif()
 
 target_link_libraries (linux-wallpaperengine PUBLIC linux-wallpaperengine-lib)
 

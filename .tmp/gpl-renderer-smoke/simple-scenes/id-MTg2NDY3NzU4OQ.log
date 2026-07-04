@@ -1,0 +1,43 @@
+Running with: ./build/macos-scene/output/wwb-scene-renderer --window 0x0x320x180 --silent --noautomute --no-audio-processing --disable-mouse --disable-particles --screenshot /Users/lyu/01_Project/01_Projects/wallpaperengine-mac-renderer/.tmp/gpl-renderer-smoke/simple-scenes/id-MTg2NDY3NzU4OQ.png --screenshot-delay 3 /Users/lyu/Library/Application Support/WorkshopWallpaperBridge/Assets/id-MTg2NDY3NzU4OQ 
+Cannot find directory for steam app wallpaper_engine: assets
+Cannot find assets folder, continuing with virtual scene-only fallbacks: "/Users/lyu/01_Project/01_Projects/wallpaperengine-mac-renderer/build/macos-scene/output/assets"
+Stop requested by signal 15
+SDL_OpenAudioDevice: CoreAudio error (AudioQueueStart): -66681
+GLSL fragment unit parsing Failed: ERROR: 0:91: 'ApplyBlending' : no matching overloaded function found 
+ERROR: 0:91: '' : missing #endif 
+ERROR: 0:91: '' : compilation terminated 
+ERROR: 3 compilation errors.  No code generated.
+
+
+ERROR: Compiled vertex shader was corrupt.
+ERROR: Compiled fragment shader was corrupt.
+
+Failed to setup object 13: ERROR: Compiled vertex shader was corrupt.
+ERROR: Compiled fragment shader was corrupt.
+
+GLSL fragment unit parsing Failed: ERROR: 0:90: 'ApplyBlending' : no matching overloaded function found 
+ERROR: 0:90: '' : missing #endif 
+ERROR: 0:90: '' : compilation terminated 
+ERROR: 3 compilation errors.  No code generated.
+
+
+ERROR: Compiled vertex shader was corrupt.
+ERROR: Compiled fragment shader was corrupt.
+
+Failed to setup object 234: ERROR: Compiled vertex shader was corrupt.
+ERROR: Compiled fragment shader was corrupt.
+
+GLSL fragment unit parsing Failed: ERROR: 0:90: 'ApplyBlending' : no matching overloaded function found 
+ERROR: 0:90: '' : missing #endif 
+ERROR: 0:90: '' : compilation terminated 
+ERROR: 3 compilation errors.  No code generated.
+
+
+ERROR: Compiled vertex shader was corrupt.
+ERROR: Compiled fragment shader was corrupt.
+
+Failed to setup object 238: ERROR: Compiled vertex shader was corrupt.
+ERROR: Compiled fragment shader was corrupt.
+
+Stopping
+libc++abi: terminating due to uncaught exception of type std::__1::system_error: mutex lock failed: Invalid argument

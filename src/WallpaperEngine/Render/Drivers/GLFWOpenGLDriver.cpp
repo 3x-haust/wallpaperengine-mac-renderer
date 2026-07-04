@@ -6,7 +6,9 @@
 #include "WallpaperEngine/Render/Drivers/Output/X11Output.h"
 #endif
 
+#ifdef ENABLE_X11
 #define GLFW_EXPOSE_NATIVE_X11
+#endif
 #include "WallpaperEngine/Debugging/CallStack.h"
 
 #include <GLFW/glfw3native.h>
@@ -33,8 +35,10 @@ GLFWOpenGLDriver::GLFWOpenGLDriver (const char* windowTitle, ApplicationContext&
     glfwWindowHint (GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint (GLFW_VISIBLE, GLFW_FALSE);
     // set X11-specific hints
+#ifdef ENABLE_X11
     glfwWindowHintString (GLFW_X11_CLASS_NAME, "linux-wallpaperengine");
     glfwWindowHintString (GLFW_X11_INSTANCE_NAME, "linux-wallpaperengine");
+#endif
 
     // for forced window mode, we can set some hints that'll help position the window
     if (context.settings.render.mode == Application::ApplicationContext::EXPLICIT_WINDOW) {

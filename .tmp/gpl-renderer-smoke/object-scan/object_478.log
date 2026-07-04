@@ -1,0 +1,17 @@
+Running with: ./build/macos-scene/output/wwb-scene-renderer --window 0x0x640x360 --silent --noautomute --no-audio-processing --disable-mouse --render-debug object=478 --screenshot /Users/lyu/01_Project/01_Projects/wallpaperengine-mac-renderer/.tmp/gpl-renderer-smoke/object-scan/object_478.png --screenshot-delay 5 /Users/lyu/Library/Application Support/WorkshopWallpaperBridge/Assets/id-MjQ2ODQ4OTIyMw 
+Cannot find directory for steam app wallpaper_engine: assets
+Cannot find assets folder, continuing with virtual scene-only fallbacks: "/Users/lyu/01_Project/01_Projects/wallpaperengine-mac-renderer/build/macos-scene/output/assets"
+SDL_OpenAudioDevice: CoreAudio error (AudioQueueStart): -66681
+Loaded puppet mesh models/pecesmedianos_puppet.mdl version=MDLV0013 vertices=937 indices=4794
+CText: cannot read font 'fonts/Alcubierre.otf': filesystem error: Cannot find requested file in any of the mountpoints ["/fonts/Alcubierre.otf"], falling back to system font
+CText: no usable system font found
+Loaded puppet mesh models/lastpez_puppet.mdl version=MDLV0013 vertices=509 indices=2526
+CText: cannot read font 'fonts/Alcubierre.otf': filesystem error: Cannot find requested file in any of the mountpoints ["/fonts/Alcubierre.otf"], falling back to system font
+CText: no usable system font found
+Loaded puppet mesh models/fish_puppet.mdl version=MDLV0013 vertices=268 indices=1182
+WARNING: Output of vertex shader 'v_TexCoord45' not read by fragment shader
+
+Stop requested by signal 15Stop requested by signal 15
+
+Stopping
+libc++abi: terminating due to uncaught exception of type std::__1::system_error: mutex lock failed: Invalid argument

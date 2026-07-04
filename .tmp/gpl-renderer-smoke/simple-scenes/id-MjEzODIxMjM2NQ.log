@@ -1,0 +1,8 @@
+Running with: ./build/macos-scene/output/wwb-scene-renderer --window 0x0x320x180 --silent --noautomute --no-audio-processing --disable-mouse --disable-particles --screenshot /Users/lyu/01_Project/01_Projects/wallpaperengine-mac-renderer/.tmp/gpl-renderer-smoke/simple-scenes/id-MjEzODIxMjM2NQ.png --screenshot-delay 3 /Users/lyu/Library/Application Support/WorkshopWallpaperBridge/Assets/id-MjEzODIxMjM2NQ 
+Cannot find directory for steam app wallpaper_engine: assets
+Cannot find assets folder, continuing with virtual scene-only fallbacks: "/Users/lyu/01_Project/01_Projects/wallpaperengine-mac-renderer/build/macos-scene/output/assets"
+Stop requested by signal 15
+Stop requested by signal 15
+SDL_OpenAudioDevice: CoreAudio error (AudioQueueStart): -66681
+Stopping
+libc++abi: terminating due to uncaught exception of type std::__1::system_error: mutex lock failed: Invalid argument

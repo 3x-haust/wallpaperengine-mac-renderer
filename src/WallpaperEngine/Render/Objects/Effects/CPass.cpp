@@ -1,6 +1,12 @@
 #include "CPass.h"
+#include <algorithm>
+#include <atomic>
+#include <cctype>
+#include <filesystem>
+#include <iomanip>
 #include <sstream>
 #include <utility>
+#include <vector>
 
 #include "WallpaperEngine/Render/Helpers/ContextAware.h"
 
@@ -19,6 +25,8 @@
 
 #include "WallpaperEngine/Logging/Log.h"
 
+#include <stb_image_write.h>
+
 using namespace WallpaperEngine;
 using namespace WallpaperEngine::Render;
 using namespace WallpaperEngine::Render::Objects;
@@ -33,12 +41,114 @@ const TextureMap DEFAULT_BINDS = {};
 const ImageEffectPassOverride DEFAULT_OVERRIDE = {};
 
 namespace {
+constexpr size_t MaxPassDumps = 512;
+
 std::string textureSizeLabel (const std::shared_ptr<const TextureProvider>& texture) {
     if (texture == nullptr) {
 	return "<null>";
     }
 
     return std::to_string (texture->getRealWidth ()) + "x" + std::to_string (texture->getRealHeight ());
+}
+
+std::string sanitizeName (std::string value) {
+    for (char& ch : value) {
+	if (!std::isalnum (static_cast<unsigned char> (ch)) && ch != '-' && ch != '_') {
+	    ch = '_';
+	}
+    }
+    return value.empty () ? "unnamed" : value;
+}
+
+const char* framebufferStatusName (GLenum status) {
+    switch (status) {
+	case GL_FRAMEBUFFER_COMPLETE:
+	    return "GL_FRAMEBUFFER_COMPLETE";
+	case GL_FRAMEBUFFER_UNDEFINED:
+	    return "GL_FRAMEBUFFER_UNDEFINED";
+	case GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT:
+	    return "GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT";
+	case GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT:
+	    return "GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT";
+	case GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER:
+	    return "GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER";
+	case GL_FRAMEBUFFER_INCOMPLETE_READ_BUFFER:
+	    return "GL_FRAMEBUFFER_INCOMPLETE_READ_BUFFER";
+	case GL_FRAMEBUFFER_UNSUPPORTED:
+	    return "GL_FRAMEBUFFER_UNSUPPORTED";
+	case GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE:
+	    return "GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE";
+	case GL_FRAMEBUFFER_INCOMPLETE_LAYER_TARGETS:
+	    return "GL_FRAMEBUFFER_INCOMPLETE_LAYER_TARGETS";
+	default:
+	    return "GL_FRAMEBUFFER_UNKNOWN";
+    }
+}
+
+void logGlErrors (const char* label, int objectId, const std::string& shader) {
+    for (GLenum error = glGetError (); error != GL_NO_ERROR; error = glGetError ()) {
+	sLog.error ("GL debug error ", label, " object=", objectId, " shader=", shader, " error=0x", std::hex, error);
+    }
+}
+
+void logFramebufferStatus (const char* label, int objectId, const std::string& shader) {
+    const GLenum status = glCheckFramebufferStatus (GL_FRAMEBUFFER);
+    sLog.out (
+	"GL debug framebuffer ", label, " object=", objectId, " shader=", shader, " status=",
+	framebufferStatusName (status), " raw=0x", std::hex, status
+    );
+}
+
+void dumpPass (
+    const std::string& directory, int objectId, const std::string& shader, const std::shared_ptr<const CFBO>& drawTo
+) {
+    if (directory.empty () || drawTo == nullptr) {
+	return;
+    }
+
+    static std::atomic<size_t> dumpIndex { 0 };
+    const size_t index = dumpIndex.fetch_add (1);
+    if (index >= MaxPassDumps) {
+	return;
+    }
+
+    const int width = static_cast<int> (drawTo->getRealWidth ());
+    const int height = static_cast<int> (drawTo->getRealHeight ());
+    if (width <= 0 || height <= 0) {
+	return;
+    }
+
+    std::filesystem::create_directories (directory);
+
+    GLint previousFramebuffer = 0;
+    GLint previousReadBuffer = 0;
+    GLint previousPackAlignment = 0;
+    glGetIntegerv (GL_FRAMEBUFFER_BINDING, &previousFramebuffer);
+    glGetIntegerv (GL_READ_BUFFER, &previousReadBuffer);
+    glGetIntegerv (GL_PACK_ALIGNMENT, &previousPackAlignment);
+
+    glBindFramebuffer (GL_FRAMEBUFFER, drawTo->getFramebuffer ());
+    glReadBuffer (GL_COLOR_ATTACHMENT0);
+    glPixelStorei (GL_PACK_ALIGNMENT, 1);
+
+    std::vector<uint8_t> pixels (static_cast<size_t> (width) * static_cast<size_t> (height) * 3);
+    glReadPixels (0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, pixels.data ());
+
+    std::vector<uint8_t> flipped (pixels.size ());
+    const size_t rowBytes = static_cast<size_t> (width) * 3;
+    for (int y = 0; y < height; ++y) {
+	std::copy_n (&pixels[static_cast<size_t> (height - y - 1) * rowBytes], rowBytes, &flipped[static_cast<size_t> (y) * rowBytes]);
+    }
+
+    std::ostringstream filename;
+    filename << std::setw (4) << std::setfill ('0') << index << "_object-" << objectId << "_shader-"
+	     << sanitizeName (shader) << "_target-" << sanitizeName (drawTo->getName ()) << ".png";
+    const auto path = std::filesystem::path (directory) / filename.str ();
+    stbi_write_png (path.string ().c_str (), width, height, 3, flipped.data (), width * 3);
+
+    glPixelStorei (GL_PACK_ALIGNMENT, previousPackAlignment);
+    glReadBuffer (previousReadBuffer);
+    glBindFramebuffer (GL_FRAMEBUFFER, previousFramebuffer);
 }
 }
 
@@ -498,12 +608,34 @@ void CPass::render () {
 	return;
     }
 
+    if (debug.glDebug) {
+	const auto texture0 = this->resolveTexture0 ();
+	if (texture0 != nullptr && texture0->getTextureID (0) == this->m_drawTo->getTextureID (0)) {
+	    sLog.error (
+		"GL debug feedback-risk object=", this->m_renderable.getId (), " shader=", this->m_pass.shader,
+		" texture0=", texture0->getTextureID (0), " drawTexture=", this->m_drawTo->getTextureID (0),
+		" drawTo=", this->m_drawTo->getName ()
+	    );
+	}
+    }
+
     this->setupRenderFramebuffer ();
+    if (debug.glDebug) {
+	logFramebufferStatus ("after-bind", this->m_renderable.getId (), this->m_pass.shader);
+	logGlErrors ("after-bind", this->m_renderable.getId (), this->m_pass.shader);
+    }
     this->setupRenderTexture ();
+    if (debug.glDebug) {
+	logGlErrors ("after-textures", this->m_renderable.getId (), this->m_pass.shader);
+    }
     this->setupRenderUniforms ();
     this->setupRenderReferenceUniforms ();
     this->setupRenderAttributes ();
     this->renderGeometry ();
+    if (debug.glDebug) {
+	logGlErrors ("after-draw", this->m_renderable.getId (), this->m_pass.shader);
+    }
+    dumpPass (debug.dumpPassesDirectory, this->m_renderable.getId (), this->m_pass.shader, this->m_drawTo);
     this->cleanupRenderSetup ();
 }
 

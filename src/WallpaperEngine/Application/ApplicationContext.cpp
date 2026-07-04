@@ -13,6 +13,9 @@
 #include <sstream>
 #include <stdexcept>
 #include <string_view>
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
+#endif
 
 #include <argparse/argparse.hpp>
 
@@ -601,6 +604,15 @@ void ApplicationContext::loadSettingsFromArgv () {
 	.flag ()
 	.store_into (this->settings.general.dumpStructure);
 
+    debuggingGroup.add_argument ("--gl-debug")
+	.help ("Logs GL errors, FBO status, and feedback-loop risks during scene passes")
+	.flag ()
+	.store_into (this->settings.render.debug.glDebug);
+
+    debuggingGroup.add_argument ("--dump-passes")
+	.help ("Dumps scene pass FBO contents as PNG files into the given directory")
+	.action ([this] (const std::string& value) -> void { this->settings.render.debug.dumpPassesDirectory = value; });
+
     debuggingGroup.add_argument ("--render-debug")
 	.help (
 	    "Scene render debug mode: base-only, no-solid-final, pass-log, object=<id>, skip-object=<id>, or "
@@ -725,8 +737,19 @@ void ApplicationContext::validateAssets () {
     try {
 	this->settings.general.assets = Steam::FileSystem::appDirectory (APP_DIRECTORY, "assets");
     } catch (std::runtime_error&) {
+#ifdef __APPLE__
+	uint32_t size = 0;
+	_NSGetExecutablePath (nullptr, &size);
+	std::string executablePath (size, '\0');
+	if (_NSGetExecutablePath (executablePath.data (), &size) == 0) {
+	    this->settings.general.assets = std::filesystem::canonical (executablePath.c_str ()).parent_path () / "assets";
+	} else {
+	    this->settings.general.assets = std::filesystem::current_path () / "assets";
+	}
+#else
 	// set current path as assets' folder
 	this->settings.general.assets = std::filesystem::canonical ("/proc/self/exe").parent_path () / "assets";
+#endif
     }
 }
 

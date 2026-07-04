@@ -12,6 +12,8 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstring>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 
@@ -19,6 +21,32 @@ using namespace WallpaperEngine::Render;
 using namespace WallpaperEngine::FileSystem;
 using namespace WallpaperEngine::Data::Parsers;
 using namespace WallpaperEngine::Data::Assets;
+
+namespace {
+TextureUniquePtr makeFallbackTexture () {
+    auto texture = std::make_unique<Texture> ();
+    texture->containerVersion = ContainerVersion_TEXB0001;
+    texture->flags = TextureFlags_ClampUVs;
+    texture->width = 1;
+    texture->height = 1;
+    texture->textureWidth = 1;
+    texture->textureHeight = 1;
+    texture->format = TextureFormat_ARGB8888;
+    texture->imageCount = 1;
+
+    auto mipmap = std::make_shared<Mipmap> ();
+    mipmap->width = 1;
+    mipmap->height = 1;
+    mipmap->compression = 0;
+    mipmap->uncompressedSize = 4;
+    mipmap->compressedSize = 4;
+    mipmap->uncompressedData = std::make_unique<char[]> (4);
+    const unsigned char white[] = { 255, 255, 255, 255 };
+    std::memcpy (mipmap->uncompressedData.get (), white, 4);
+    texture->images.emplace (0, MipmapList { mipmap });
+    return texture;
+}
+}
 
 TextureCache::TextureCache (RenderContext& context) : Helpers::ContextAware (context) {
     // these textures are special cases, so make sure they're created only upon request
@@ -76,6 +104,12 @@ std::shared_ptr<const TextureProvider> TextureCache::resolve (const std::string&
 
 	    auto parsedTexture = TextureParser::parse (stream, filename, metadataLoader);
 	    auto texture = std::make_shared<CTexture> (this->getContext (), std::move (parsedTexture));
+	    if (std::getenv ("WPENGINE_TRACE_TEXTURES") != nullptr) {
+		sLog.out (
+		    "Resolved texture ", filename, " size=", texture->getRealWidth (), "x", texture->getRealHeight (),
+		    " backing=", texture->getTextureWidth (0), "x", texture->getTextureHeight (0)
+		);
+	    }
 
 #if !NDEBUG
 	    glObjectLabel (GL_TEXTURE, texture->getTextureID (0), -1, filename.c_str ());
@@ -89,8 +123,12 @@ std::shared_ptr<const TextureProvider> TextureCache::resolve (const std::string&
 	}
     }
 
-    // TODO: FILL IN WITH A CHECKERED PATTERN TEXTURE INSTEAD?
-    throw AssetLoadException ("Cannot find file", filename, std::error_code ());
+    auto texture = std::make_shared<CTexture> (this->getContext (), makeFallbackTexture ());
+    if (std::getenv ("WPENGINE_TRACE_TEXTURES") != nullptr) {
+	sLog.out ("Using fallback texture ", filename);
+    }
+    this->store (filename, texture);
+    return texture;
 }
 
 void TextureCache::store (const std::string& name, std::shared_ptr<const TextureProvider> texture) {

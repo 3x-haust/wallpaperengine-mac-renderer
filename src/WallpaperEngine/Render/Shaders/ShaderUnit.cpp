@@ -49,6 +49,13 @@
 	  "#define fmod(x, y) ((x)-(y)*trunc((x)/(y)))\n"                                                              \
 	  "#define ddx dFdx\n"                                                                                         \
 	  "#define ddy(x) dFdy(-(x))\n"                                                                                \
+	  "#define M_PI_2 1.57079632679489661923\n"                                                                    \
+	  "vec2 rotateVec2(vec2 value, float angle) { float s = sin(angle); float c = cos(angle); return vec2(value.x * c - value.y * s, value.x * s + value.y * c); }\n" \
+	  "float ApplyBlending(int mode, float base, float blend, float opacity) { return mix(base, blend, opacity); }\n" \
+	  "vec3 ApplyBlending(int mode, vec3 base, vec3 blend, float opacity) { return mix(base, blend, opacity); }\n" \
+	  "vec4 ApplyBlending(int mode, vec4 base, vec4 blend, float opacity) { return mix(base, blend, opacity); }\n" \
+	  "vec4 ApplyBlending(vec4 base, vec4 blend) { return blend; }\n"                                              \
+	  "vec4 ApplyBlending(vec4 base, vec4 blend, float opacity) { return mix(base, blend, opacity); }\n"           \
 	  "#define GLSL 1\n\n";
 #define FRAGMENT_SHADER_DEFINES                                                                                        \
     "out vec4 out_FragColor;\n"                                                                                        \

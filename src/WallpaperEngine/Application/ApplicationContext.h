@@ -130,6 +130,8 @@ public:
 		bool baseOnly;
 		bool noSolidFinal;
 		bool passLog;
+		bool glDebug;
+		std::string dumpPassesDirectory;
 		std::optional<int> objectFilter;
 		std::vector<int> skipObjects;
 		std::vector<int> skipEffects;
@@ -207,6 +209,8 @@ public:
                 .baseOnly = false,
                 .noSolidFinal = false,
 	                .passLog = false,
+	                .glDebug = false,
+	                .dumpPassesDirectory = "",
 	                .objectFilter = std::nullopt,
 	                .skipObjects = {},
 	                .skipEffects = {},

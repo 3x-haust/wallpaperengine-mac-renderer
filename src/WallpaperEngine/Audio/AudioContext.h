@@ -4,7 +4,10 @@
 #include <vector>
 
 #include "WallpaperEngine/Application/ApplicationContext.h"
+#include "WallpaperEngine/Audio/Drivers/Recorders/PlaybackRecorder.h"
+#ifndef WPENGINE_SCENE_ONLY
 #include "WallpaperEngine/Audio/Drivers/Recorders/PulseAudioPlaybackRecorder.h"
+#endif
 
 namespace WallpaperEngine {
 namespace Application {
