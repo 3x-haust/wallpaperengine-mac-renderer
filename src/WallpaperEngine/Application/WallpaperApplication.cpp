@@ -72,16 +72,13 @@ const std::vector<std::filesystem::path>& requiredEngineAssetPaths () {
     return paths;
 }
 
-std::vector<std::filesystem::path> missingEngineAssetPaths (const std::filesystem::path& assetsPath) {
+std::vector<std::filesystem::path> missingEngineAssetPaths (const Container& container) {
     std::vector<std::filesystem::path> missing;
 
-    if (!std::filesystem::is_directory (assetsPath) || std::filesystem::is_symlink (assetsPath)) {
-	missing.emplace_back ("<assets-dir>");
-    }
-
     for (const auto& relativePath : requiredEngineAssetPaths ()) {
-	const auto candidate = assetsPath / relativePath;
-	if (!std::filesystem::is_regular_file (candidate) || std::filesystem::is_symlink (candidate)) {
+	try {
+	    [[maybe_unused]] const auto asset = container.read (relativePath);
+	} catch (std::runtime_error&) {
 	    missing.emplace_back (relativePath);
 	}
     }
@@ -89,14 +86,18 @@ std::vector<std::filesystem::path> missingEngineAssetPaths (const std::filesyste
     return missing;
 }
 
-std::string joinMissingEngineAssets (const std::vector<std::filesystem::path>& missing) {
+std::string missingEngineAssetsMessage (
+    const std::filesystem::path& assetsPath, const std::vector<std::filesystem::path>& missing
+) {
     std::ostringstream output;
+    output << "Wallpaper Engine assets are required at " << assetsPath.string () << "; missing ";
     for (std::size_t i = 0; i < missing.size (); ++i) {
 	if (i != 0) {
-	    output << ",";
+	    output << ", ";
 	}
 	output << missing[i].string ();
     }
+    output << ". Provide the real Wallpaper Engine assets folder with --assets-dir /path/to/wallpaper_engine/assets";
     return output.str ();
 }
 }
@@ -162,7 +163,7 @@ AssetLocatorUniquePtr WallpaperApplication::setupAssetLocator (const std::string
     } catch (std::runtime_error&) {
 #ifdef WPENGINE_SCENE_ONLY
 	throw std::runtime_error (
-	    "Cannot find a valid Wallpaper Engine assets folder at " + this->m_context.settings.general.assets.string ()
+	    missingEngineAssetsMessage (this->m_context.settings.general.assets, requiredEngineAssetPaths ())
 	);
 #else
 	sLog.exception ("Cannot find a valid assets folder, resolved to ", this->m_context.settings.general.assets);
@@ -170,12 +171,9 @@ AssetLocatorUniquePtr WallpaperApplication::setupAssetLocator (const std::string
     }
 
 #ifdef WPENGINE_SCENE_ONLY
-    const auto missingEngineAssets = missingEngineAssetPaths (this->m_context.settings.general.assets);
+    const auto missingEngineAssets = missingEngineAssetPaths (*container);
     if (!missingEngineAssets.empty ()) {
-	throw std::runtime_error (
-	    "Wallpaper Engine assets folder is incomplete at " + this->m_context.settings.general.assets.string ()
-	    + "; missing " + joinMissingEngineAssets (missingEngineAssets)
-	);
+	throw std::runtime_error (missingEngineAssetsMessage (this->m_context.settings.general.assets, missingEngineAssets));
     }
 #endif
 
