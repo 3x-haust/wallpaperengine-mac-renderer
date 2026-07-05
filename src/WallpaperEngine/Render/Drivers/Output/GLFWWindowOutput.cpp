@@ -56,12 +56,23 @@ void* GLFWWindowOutput::getImageBuffer () const { return nullptr; }
 uint32_t GLFWWindowOutput::getImageBufferSize () const { return 0; }
 
 void GLFWWindowOutput::updateRender () const {
-    // Track the current framebuffer dimensions regardless of window mode so
-    // runtime resizes (EXPLICIT_WINDOW mode via resizeWindow, WM-initiated
-    // host window resize) re-stretch the scene across the new viewport
-    // instead of cropping the original render at the old size.
-    this->m_fullWidth = this->m_driver.getFramebufferSize ().x;
-    this->m_fullHeight = this->m_driver.getFramebufferSize ().y;
+    if (this->m_context.settings.record.enabled
+	&& this->m_context.settings.render.mode == Application::ApplicationContext::EXPLICIT_WINDOW) {
+	// Recording must produce frames whose pixel size exactly matches the requested
+	// --window WxH. GLFW's hidden (GLFW_VISIBLE=false) windows keep reporting a
+	// Retina/backing-scaled framebuffer on macOS even with the Cocoa retina-framebuffer
+	// hint disabled, so glfwGetFramebufferSize() can still be 2x the requested size here.
+	// Use the literal requested geometry instead of the (possibly scaled) framebuffer size.
+	this->m_fullWidth = this->m_context.settings.render.window.geometry.z;
+	this->m_fullHeight = this->m_context.settings.render.window.geometry.w;
+    } else {
+	// Track the current framebuffer dimensions regardless of window mode so
+	// runtime resizes (EXPLICIT_WINDOW mode via resizeWindow, WM-initiated
+	// host window resize) re-stretch the scene across the new viewport
+	// instead of cropping the original render at the old size.
+	this->m_fullWidth = this->m_driver.getFramebufferSize ().x;
+	this->m_fullHeight = this->m_driver.getFramebufferSize ().y;
+    }
 
     // update the default viewport
     this->m_viewports["default"]->viewport = { 0, 0, this->m_fullWidth, this->m_fullHeight };

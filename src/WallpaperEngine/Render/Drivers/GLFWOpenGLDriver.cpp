@@ -47,6 +47,17 @@ GLFWOpenGLDriver::GLFWOpenGLDriver (const char* windowTitle, ApplicationContext&
 	glfwWindowHint (GLFW_FLOATING, GLFW_TRUE);
     }
 
+    // when recording a frame sequence, the requested --window WxH must be treated as the
+    // literal output pixel size. On macOS, GLFW's default Retina/backing-scale behaviour makes
+    // glfwGetFramebufferSize() (and therefore every internal buffer derived from it) return 2x
+    // the requested size, which doubles the recorded frame resolution. Disabling the Cocoa
+    // retina framebuffer (and monitor content-scale matching) for record mode keeps the
+    // framebuffer size equal to the window size we asked for.
+    if (context.settings.record.enabled) {
+	glfwWindowHint (GLFW_COCOA_RETINA_FRAMEBUFFER, GLFW_FALSE);
+	glfwWindowHint (GLFW_SCALE_TO_MONITOR, GLFW_FALSE);
+    }
+
 #if !NDEBUG
     glfwWindowHint (GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
 #endif /* DEBUG */
