@@ -752,10 +752,14 @@ void CPass::setupShaders () {
     for (const auto& [index, texture] : this->m_pass.usertextures) {
 	passTextures.insert_or_assign (index, texture);
     }
+    TextureMap overrideTextures = this->m_override.textures;
+    for (const auto& [index, texture] : this->m_override.usertextures) {
+	overrideTextures.insert_or_assign (index, texture);
+    }
 
     this->m_shader = new Render::Shaders::Shader (
 	this->m_renderable.getAssetLocator (), shaderName, this->m_combos, this->m_override.combos, passTextures,
-	this->m_override.textures, this->m_override.constants
+	overrideTextures, this->m_override.constants
     );
 
     const auto [vertex, fragment]

@@ -18,7 +18,7 @@ MaterialUniquePtr MaterialParser::load (const Project& project, const std::strin
 MaterialUniquePtr MaterialParser::parse (const JSON& it, const std::string& filename, const Project& project) {
     return std::make_unique<Material> (Material {
 	.filename = filename,
-	.passes = parsePasses (it.require ("passes", "Material must have passes to render"), project),
+	.passes = parsePasses (it.require ("passes", "Material must have passes to render in " + filename), project),
     });
 }
 

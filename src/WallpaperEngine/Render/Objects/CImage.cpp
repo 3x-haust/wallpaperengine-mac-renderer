@@ -190,10 +190,23 @@ CImage::CImage (Wallpapers::CScene& scene, const Image& image) :
 
     const auto transform = this->resolveTransform (this->getImage ());
     glm::vec3 origin = transform.origin;
-    glm::vec2 size = this->getSize ();
     glm::vec3 scale = transform.scale;
 
+    // Detect the texture *before* computing size: getSize() prefers the bound
+    // texture's real resolution over the declared image size whenever a texture
+    // is present (see CImage::getSize()). Some materials (e.g. "composelayer")
+    // bind a scene-wide "_rt_..." render target as their texture while still
+    // declaring a small placeholder size in the scene file. Computing size
+    // before texture detection made this layer's own compositing/effect FBOs
+    // (m_mainFBO/m_subFBO below) get created at that stale, undersized
+    // placeholder while every other consumer of getSize() (per-effect FBOs,
+    // per-frame resolveGeometrySize()) already runs after detectTexture() and
+    // correctly uses the full texture resolution. That mismatch forced water
+    // and puppet effect layers through a tiny intermediate buffer that then
+    // got upscaled onto a much larger on-screen quad, producing blur.
     this->detectTexture ();
+
+    glm::vec2 size = this->getSize ();
 
     // detect texture (if any)
     if (this->m_texture == nullptr) {

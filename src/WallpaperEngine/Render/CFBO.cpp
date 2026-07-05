@@ -3,6 +3,28 @@
 
 using namespace WallpaperEngine::Render;
 
+namespace {
+GLint getInternalFormat (const TextureFormat format) {
+#if defined(__APPLE__)
+    if (format == TextureFormat_RGBA16161616f) {
+	return GL_RGBA16F;
+    }
+#endif
+
+    return GL_RGBA8;
+}
+
+GLenum getUploadType (const TextureFormat format) {
+#if defined(__APPLE__)
+    if (format == TextureFormat_RGBA16161616f) {
+	return GL_HALF_FLOAT;
+    }
+#endif
+
+    return GL_UNSIGNED_BYTE;
+}
+}
+
 CFBO::CFBO (
     std::string name, const TextureFormat format, const uint32_t flags, const float scale, uint32_t realWidth,
     uint32_t realHeight, uint32_t textureWidth, uint32_t textureHeight
@@ -17,7 +39,10 @@ CFBO::CFBO (
     // bind the new texture to set settings on it
     glBindTexture (GL_TEXTURE_2D, this->m_texture);
     // give OpenGL an empty image
-    glTexImage2D (GL_TEXTURE_2D, 0, GL_RGBA8, textureWidth, textureHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    glTexImage2D (
+	GL_TEXTURE_2D, 0, getInternalFormat (format), textureWidth, textureHeight, 0, GL_RGBA, getUploadType (format),
+	nullptr
+    );
     // label stuff for debugging
 #if !NDEBUG
     glObjectLabel (GL_TEXTURE, this->m_texture, -1, this->m_name.c_str ());

@@ -17,7 +17,7 @@ ModelUniquePtr ModelParser::load (const Project& project, const std::string& fil
 }
 
 ModelUniquePtr ModelParser::parse (const JSON& file, const Project& project, const std::string& filename) {
-    const auto material = file.require<std::string> ("material", "Model must have a material");
+    const auto material = file.require<std::string> ("material", "Model must have a material in " + filename);
 
     return std::make_unique<ModelStruct> (ModelStruct {
 	.filename = filename,

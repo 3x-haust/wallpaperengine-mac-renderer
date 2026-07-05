@@ -1,16 +1,38 @@
 #include "FBOProvider.h"
+#include "WallpaperEngine/Logging/Log.h"
 #include <gmpxx.h>
 
 using namespace WallpaperEngine::Render;
 using namespace WallpaperEngine::Data::Model;
 
+namespace {
+TextureFormat parseFBOFormat (const std::string& format) {
+    if (format == "rgba8888") {
+	return TextureFormat_ARGB8888;
+    }
+
+    if (format == "rgba16161616f") {
+	return TextureFormat_RGBA16161616f;
+    }
+
+    if (format == "rgba_backbuffer") {
+#if defined(__APPLE__)
+	return TextureFormat_RGBA16161616f;
+#else
+	return TextureFormat_ARGB8888;
+#endif
+    }
+
+    sLog.error ("Unknown FBO format '", format, "', falling back to rgba8888");
+    return TextureFormat_ARGB8888;
+}
+}
+
 FBOProvider::FBOProvider (const FBOProvider* parent) : m_parent (parent) { }
 
 std::shared_ptr<CFBO> FBOProvider::create (const FBO& base, uint32_t flags, const glm::vec2 size) {
     return this->m_fbos[base.name] = std::make_shared<CFBO> (
-	       base.name,
-	       // TODO: PROPERLY DETERMINE FBO FORMAT BASED ON THE STRING
-	       TextureFormat_ARGB8888, flags, base.scale, size.x / base.scale, size.y / base.scale, size.x / base.scale,
+	       base.name, parseFBOFormat (base.format), flags, base.scale, size.x / base.scale, size.y / base.scale, size.x / base.scale,
 	       size.y / base.scale
 	   );
 }
@@ -20,7 +42,7 @@ std::shared_ptr<CFBO> FBOProvider::create (
     glm::vec2 textureSize
 ) {
     return this->m_fbos[name] = std::make_shared<CFBO> (
-	       name, TextureFormat_ARGB8888, flags, scale, realSize.x, realSize.y, textureSize.x, textureSize.y
+	       name, format, flags, scale, realSize.x, realSize.y, textureSize.x, textureSize.y
 	   );
 }
 
