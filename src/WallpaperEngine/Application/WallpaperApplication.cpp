@@ -27,11 +27,16 @@
 
 #include <algorithm>
 #include <climits>
+#include <cmath>
+#include <cstring>
 #include <numeric>
 #include <sstream>
 #include <unistd.h>
+#include <vector>
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>
+#define STB_IMAGE_RESIZE_IMPLEMENTATION
+#include <stb_image_resize2.h>
 #include <thread>
 
 #define FULLSCREEN_CHECK_WAIT_TIME 250
@@ -744,31 +749,96 @@ void WallpaperApplication::takeScreenshot (const std::filesystem::path& filename
 	auto* bitmap = new uint8_t[width * height * 3] { 0 };
 
 	for (const auto& capture : captures) {
-	    // copy pixels to bitmap, sampling from the UV-defined region
-	    for (int y = 0; y < capture.vpHeight; y++) {
-		for (int x = 0; x < capture.vpWidth; x++) {
-		    // interpolate within the UV range to get source coordinates
-		    const float u
-			= capture.ustart + (static_cast<float> (x) / capture.vpWidth) * (capture.uend - capture.ustart);
-		    const float v = capture.vstart
-			+ (static_cast<float> (y) / capture.vpHeight) * (capture.vend - capture.vstart);
+	    // The UV range can slightly overshoot [0,1] (the scaling code intentionally
+	    // overscans so that, when sampled on the GPU with GL_CLAMP_TO_EDGE + bilinear
+	    // filtering, the crop looks seamless). Naively converting UV -> nearest source
+	    // pixel and clamping the index reproduces that overscan region by repeating a
+	    // single source row/column across many destination rows/columns, which looks
+	    // like a solid band of garbage/stripes wherever that single row/column contains
+	    // fine detail (e.g. wave ripples). Use a proper filtered resize (stb_image_resize2)
+	    // with clamp-to-edge sampling instead, so out-of-range UVs smoothly extend the
+	    // edge pixel exactly like the GPU-rendered version does.
+	    const bool flipX = capture.uend < capture.ustart;
+	    const bool flipY = capture.vend < capture.vstart;
+	    const double s0 = std::min (capture.ustart, capture.uend);
+	    const double s1 = std::max (capture.ustart, capture.uend);
+	    const double t0 = std::min (capture.vstart, capture.vend);
+	    const double t1 = std::max (capture.vstart, capture.vend);
 
-		    // convert UV to pixel coordinates in the source buffer
-		    const int srcX = std::clamp (static_cast<int> (u * capture.readWidth), 0, capture.readWidth - 1);
-		    const int srcY = std::clamp (static_cast<int> (v * capture.readHeight), 0, capture.readHeight - 1);
-		    const int srcIdx = (srcY * capture.readWidth + srcX) * 3;
+	    // stb_image_resize2 can crash when the requested input subrect extends far
+	    // outside [0,1] combined with a large downsample ratio (an internal filter-
+	    // width overflow in its region-clipping code). The overscan itself only
+	    // exists so that, when sampled on the GPU with GL_CLAMP_TO_EDGE + bilinear
+	    // filtering, the crop looks seamless -- there is no actual image data beyond
+	    // UV [0,1], since that range already spans the entire captured FBO. So simply
+	    // clamp the subrect to the valid [0,1] input range and resize it across the
+	    // *entire* destination viewport. This is equivalent to the intended crop
+	    // minus its edge-clamp margin (a small, imperceptible difference in zoom),
+	    // and avoids both the crash and the alternative of duplicating/aliasing a
+	    // single raw source row or column across a large destination band.
+	    const double clampedS0 = std::clamp (s0, 0.0, 1.0);
+	    const double clampedS1 = std::clamp (s1, 0.0, 1.0);
+	    const double clampedT0 = std::clamp (t0, 0.0, 1.0);
+	    const double clampedT1 = std::clamp (t1, 0.0, 1.0);
 
-		    const int xfinal = x + capture.xoffset;
-		    // FBO content is not flipped like default framebuffer, so invert vflip logic
-		    const int yfinal = vflip ? y : (capture.vpHeight - y - 1);
+	    std::vector<uint8_t> resized (static_cast<size_t> (capture.vpWidth) * capture.vpHeight * 3);
 
-		    if (yfinal >= 0 && yfinal < height && xfinal >= 0 && xfinal < width) {
-			bitmap[yfinal * width * 3 + xfinal * 3] = capture.buffer[srcIdx];
-			bitmap[yfinal * width * 3 + xfinal * 3 + 1] = capture.buffer[srcIdx + 1];
-			bitmap[yfinal * width * 3 + xfinal * 3 + 2] = capture.buffer[srcIdx + 2];
+	    if (clampedS1 > clampedS0 && clampedT1 > clampedT0) {
+		STBIR_RESIZE resize;
+		stbir_resize_init (
+		    &resize, capture.buffer, capture.readWidth, capture.readHeight, 0, resized.data (), capture.vpWidth,
+		    capture.vpHeight, 0, STBIR_RGB, STBIR_TYPE_UINT8
+		);
+		stbir_set_input_subrect (&resize, clampedS0, clampedT0, clampedS1, clampedT1);
+		stbir_resize_extended (&resize);
+	    }
+
+	    // undo the ordering flip (reversed UV range) that stbir_set_input_subrect cannot
+	    // express directly, since it always samples from s0/t0 towards s1/t1
+	    if (flipX) {
+		for (int y = 0; y < capture.vpHeight; y++) {
+		    uint8_t* row = &resized[static_cast<size_t> (y) * capture.vpWidth * 3];
+		    for (int x = 0; x < capture.vpWidth / 2; x++) {
+			const int otherX = capture.vpWidth - 1 - x;
+			for (int c = 0; c < 3; c++) {
+			    std::swap (row[x * 3 + c], row[otherX * 3 + c]);
+			}
 		    }
 		}
 	    }
+	    if (flipY) {
+		for (int y = 0; y < capture.vpHeight / 2; y++) {
+		    const int otherY = capture.vpHeight - 1 - y;
+		    uint8_t* rowA = &resized[static_cast<size_t> (y) * capture.vpWidth * 3];
+		    uint8_t* rowB = &resized[static_cast<size_t> (otherY) * capture.vpWidth * 3];
+		    std::swap_ranges (rowA, rowA + capture.vpWidth * 3, rowB);
+		}
+	    }
+
+	    // copy the resized viewport into the final bitmap
+	    for (int y = 0; y < capture.vpHeight; y++) {
+		const int xfinal = capture.xoffset;
+		// FBO content is not flipped like default framebuffer, so invert vflip logic
+		const int yfinal = vflip ? y : (capture.vpHeight - y - 1);
+
+		if (yfinal < 0 || yfinal >= height) {
+		    continue;
+		}
+
+		for (int x = 0; x < capture.vpWidth; x++) {
+		    if (xfinal + x < 0 || xfinal + x >= width) {
+			continue;
+		    }
+
+		    const size_t srcIdx = (static_cast<size_t> (y) * capture.vpWidth + x) * 3;
+		    const size_t dstIdx = (static_cast<size_t> (yfinal) * width + xfinal + x) * 3;
+
+		    bitmap[dstIdx] = resized[srcIdx];
+		    bitmap[dstIdx + 1] = resized[srcIdx + 1];
+		    bitmap[dstIdx + 2] = resized[srcIdx + 2];
+		}
+	    }
+
 	    delete[] capture.buffer;
 	}
 
