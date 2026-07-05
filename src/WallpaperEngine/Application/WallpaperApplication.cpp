@@ -7,6 +7,7 @@
 #include "WallpaperEngine/Logging/Log.h"
 #include "WallpaperEngine/Render/Drivers/VideoFactories.h"
 #include "WallpaperEngine/Render/RenderContext.h"
+#include "WallpaperEngine/Render/Shaders/GLSLContext.h"
 
 #include "WallpaperEngine/Data/Dumpers/StringPrinter.h"
 #include "WallpaperEngine/Data/Parsers/ProjectParser.h"
@@ -1106,6 +1107,16 @@ void WallpaperApplication::cleanup () {
 #if DEMOMODE
     close_encoder ();
 #endif /* DEMOMODE */
+
+    // Tear down glslang's process-wide state deterministically, while the process
+    // is still fully alive. Letting the C++ runtime destroy this static singleton
+    // at exit-time is unsafe: glslang keeps its own global init mutex as a separate
+    // static object defined in another translation unit, and the standard does not
+    // guarantee any destruction order between statics in different translation
+    // units. If that mutex were destroyed first, glslang::FinalizeProcess() would
+    // try to lock an already-destroyed std::mutex and throw std::system_error,
+    // which is uncaught after main() returns and aborts the process.
+    WallpaperEngine::Render::Shaders::GLSLContext::shutdown ();
 
     SDL_Quit ();
 }

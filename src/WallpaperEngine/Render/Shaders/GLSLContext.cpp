@@ -157,6 +157,8 @@ GLSLContext& GLSLContext::get () {
     return *sInstance;
 }
 
+void GLSLContext::shutdown () { sInstance.reset (); }
+
 std::pair<std::string, std::string> GLSLContext::toGlsl (const std::string& vertex, const std::string& fragment) {
     glslang::TShader vertexShader (EShLangVertex);
 
