@@ -45,6 +45,12 @@ public:
     void setup () override;
     void render () override;
 
+    /**
+     * @return true if this text object is driven by an attached SceneScript
+     *         (e.g. a live clock), false for static text.
+     */
+    [[nodiscard]] bool isScripted () const { return m_layerHandle != Scripting::kInvalidLayerHandle; }
+
 private:
     // Rebuilds the glyph texture (and matching quad VBO) from the given string.
     // Reuses existing GL handles if already allocated, so this is safe to call

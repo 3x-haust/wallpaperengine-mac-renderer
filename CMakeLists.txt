@@ -6,6 +6,10 @@ if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
     set(CMAKE_INSTALL_PREFIX "/opt/${PROJECT_NAME}" CACHE PATH "..." FORCE)
 endif()
 
+if("${CMAKE_SYSTEM_NAME}" STREQUAL "Darwin")
+    enable_language(OBJCXX)
+endif()
+
 set_property(GLOBAL PROPERTY OS_FOLDERS ON)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/CMakeModules")
@@ -418,6 +422,7 @@ set(COMMON_SOURCES
     src/WallpaperEngine/Render/Drivers/GLFWOpenGLDriver.cpp
     src/WallpaperEngine/Render/Drivers/VideoDriver.h
     src/WallpaperEngine/Render/Drivers/VideoDriver.cpp
+    src/WallpaperEngine/Render/Drivers/MacOSProcessPolicy.h
     src/WallpaperEngine/Render/RenderContext.h
     src/WallpaperEngine/Render/RenderContext.cpp
     src/WallpaperEngine/Render/TextureCache.h
@@ -594,13 +599,19 @@ if(BUILD_TESTING)
         src/WallpaperEngine/Testing/Cases/PropertyParser.cpp)
 endif()
 
+if(APPLE)
+    set(MACOS_SOURCES
+        src/WallpaperEngine/Render/Drivers/MacOSProcessPolicy.mm)
+endif()
+
 add_library(
     linux-wallpaperengine-lib SHARED
 
     ${COMMON_SOURCES}
     ${WAYLAND_SOURCES}
     ${X11_SOURCES}
-    ${DEMOMODE_SOURCES})
+    ${DEMOMODE_SOURCES}
+    ${MACOS_SOURCES})
 
 target_link_libraries (linux-wallpaperengine-lib PUBLIC
     ${OPENGL_LIBRARIES}
@@ -621,6 +632,11 @@ target_link_libraries (linux-wallpaperengine-lib PUBLIC
     ${GLFW_LIBRARY}
     argparse
     qjs)
+
+if(APPLE)
+    find_library(COCOA_LIBRARY Cocoa REQUIRED)
+    target_link_libraries(linux-wallpaperengine-lib PUBLIC ${COCOA_LIBRARY})
+endif()
 
 if(NOT WPENGINE_SCENE_ONLY)
     target_link_libraries(linux-wallpaperengine-lib PUBLIC

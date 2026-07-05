@@ -15,6 +15,10 @@
 
 #include <unistd.h>
 
+#ifdef __APPLE__
+#include "WallpaperEngine/Render/Drivers/MacOSProcessPolicy.h"
+#endif
+
 using namespace WallpaperEngine::Render::Drivers;
 
 void CustomGLFWErrorHandler (int errorCode, const char* reason) { sLog.error ("GLFW error ", errorCode, ": ", reason); }
@@ -27,6 +31,15 @@ GLFWOpenGLDriver::GLFWOpenGLDriver (const char* windowTitle, ApplicationContext&
     if (glfwInit () == GLFW_FALSE) {
 	sLog.exception ("Failed to initialize glfw");
     }
+
+#ifdef __APPLE__
+    // Recording is a fully offscreen, headless operation. Hide the process from the
+    // Dock/Cmd-Tab/menu bar immediately after glfwInit() creates the shared NSApplication,
+    // and before any window is created, so the icon never has a chance to appear.
+    if (context.settings.record.enabled) {
+	wwb_macos_hide_from_dock ();
+    }
+#endif
 
     // set some window hints (opengl version to be used)
     glfwWindowHint (GLFW_SAMPLES, 4);

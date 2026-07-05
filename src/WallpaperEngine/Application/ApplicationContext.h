@@ -198,6 +198,8 @@ public:
 	    uint32_t seconds;
 	    /** The framerate at which to record */
 	    uint32_t fps;
+	    /** If live-data-driven objects (e.g. scripted clock text) should be skipped */
+	    bool excludeLive;
 	} record;
     } settings = {
         .general = {
@@ -258,6 +260,7 @@ public:
             .directory = "",
             .seconds = 10,
             .fps = 30,
+            .excludeLive = false,
         },
     };
 

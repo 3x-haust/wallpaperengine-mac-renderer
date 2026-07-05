@@ -356,6 +356,13 @@ void CScene::renderFrame (const glm::ivec4& viewport) {
 	if (std::ranges::find (debug.skipObjects, cur->getId ()) != debug.skipObjects.end ()) {
 	    continue;
 	}
+	// Recording bakes the output into a looping video, so live-data-driven text
+	// (e.g. a scripted clock) must not be baked in. Static text without a script
+	// is unaffected and still renders normally.
+	if (this->getContext ().getApp ().getContext ().settings.record.excludeLive && cur->is<Objects::CText> ()
+	    && cur->as<Objects::CText> ()->isScripted ()) {
+	    continue;
+	}
 
 	cur->render ();
     }

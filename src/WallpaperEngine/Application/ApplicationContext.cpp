@@ -575,6 +575,11 @@ void ApplicationContext::loadSettingsFromArgv () {
 	.default_value<uint32_t> (30)
 	.store_into (this->settings.record.fps);
 
+    recordGroup.add_argument ("--record-exclude-live")
+	.help ("Skips rendering of live-data-driven objects (e.g. scripted clock text) while recording")
+	.flag ()
+	.action ([this] (const std::string& value) -> void { this->settings.record.excludeLive = true; });
+
     auto& contentGroup = program.add_group ("Content options");
 
     contentGroup.add_argument ("--assets-dir")
