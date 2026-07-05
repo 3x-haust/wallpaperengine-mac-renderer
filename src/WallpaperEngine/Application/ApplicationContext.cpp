@@ -555,6 +555,26 @@ void ApplicationContext::loadSettingsFromArgv () {
 	.default_value<uint32_t> (5)
 	.store_into (this->settings.screenshot.delay);
 
+    auto& recordGroup = program.add_group ("Recording options");
+
+    recordGroup.add_argument ("--record-dir")
+	.help ("Renders the background offscreen and saves a PNG frame sequence to the given directory")
+	.default_value ("")
+	.action ([this] (const std::string& value) -> void {
+	    this->settings.record.enabled = true;
+	    this->settings.record.directory = value;
+	});
+
+    recordGroup.add_argument ("--record-seconds")
+	.help ("How many seconds of animation to record")
+	.default_value<uint32_t> (10)
+	.store_into (this->settings.record.seconds);
+
+    recordGroup.add_argument ("--record-fps")
+	.help ("The framerate to record the frame sequence at")
+	.default_value<uint32_t> (30)
+	.store_into (this->settings.record.fps);
+
     auto& contentGroup = program.add_group ("Content options");
 
     contentGroup.add_argument ("--assets-dir")
@@ -677,6 +697,11 @@ void ApplicationContext::loadSettingsFromArgv () {
 	this->settings.audio.volume = std::max (0, std::min (this->settings.audio.volume, 128));
 	this->settings.screenshot.delay
 	    = std::max<uint32_t> (0, std::min<uint32_t> (this->settings.screenshot.delay, 5));
+
+	if (this->settings.record.enabled) {
+	    this->settings.record.fps = std::max<uint32_t> (1, this->settings.record.fps);
+	    this->settings.record.seconds = std::max<uint32_t> (1, this->settings.record.seconds);
+	}
 
 	// use std::cout on this in case logging is disabled, this way it's easy to look at what is running
 	std::stringbuf buffer;

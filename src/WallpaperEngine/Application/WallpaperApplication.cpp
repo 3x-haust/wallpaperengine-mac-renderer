@@ -222,6 +222,34 @@ AssetLocatorUniquePtr WallpaperApplication::setupAssetLocator (const std::string
     );
 
     vfs.add ("models/wpenginelinux.json", R"({"material":"materials/wpenginelinux.json","passthrough":true})");
+    vfs.add (
+	"models/util/composelayer.json",
+	R"({"material":"materials/util/composelayer.json","passthrough":true})"
+    );
+    vfs.add (
+	"materials/util/composelayer.json",
+	R"({"passes":[{"shader":"composelayer","depthtest":"disabled","depthwrite":"disabled","blending":"translucent","cullmode":"nocull","textures":["_rt_FullFrameBuffer"]}]})"
+    );
+    vfs.add (
+	"materials/util/effectpassthrough.json",
+	R"({"passes":[{"shader":"genericimage3","blending":"normal","depthtest":"disabled","depthwrite":"disabled","cullmode":"nocull"}]})"
+    );
+    vfs.add (
+	"materials/util/downsample_quarter_bloom.json",
+	R"({"passes":[{"shader":"downsample_quarter_bloom","cullmode":"nocull","depthtest":"disabled","depthwrite":"disabled","textures":["_rt_FullFrameBuffer"]}]})"
+    );
+    vfs.add (
+	"materials/util/downsample_eighth_blur_v.json",
+	R"({"passes":[{"shader":"downsample_eighth_blur_v","cullmode":"nocull","depthtest":"disabled","depthwrite":"disabled","textures":["_rt_4FrameBuffer"]}]})"
+    );
+    vfs.add (
+	"materials/util/blur_h_bloom.json",
+	R"({"passes":[{"shader":"blur_h_bloom","cullmode":"nocull","depthtest":"disabled","depthwrite":"disabled","textures":["_rt_8FrameBuffer"]}]})"
+    );
+    vfs.add (
+	"materials/util/combine.json",
+	R"({"passes":[{"shader":"combine","cullmode":"nocull","depthtest":"disabled","depthwrite":"disabled","textures":["_rt_FullFrameBuffer","util/black"]}]})"
+    );
 
     vfs.add (
 	"materials/wpenginelinux.json",
@@ -631,7 +659,7 @@ void WallpaperApplication::setupBrowser () {
 #endif
 }
 
-void WallpaperApplication::takeScreenshot (const std::filesystem::path& filename) const {
+void WallpaperApplication::takeScreenshot (const std::filesystem::path& filename, bool async) const {
     const int width = this->m_renderContext->getOutput ().getFullWidth ();
     const int height = this->m_renderContext->getOutput ().getFullHeight ();
     const bool vflip = this->m_renderContext->getOutput ().renderVFlip ();
@@ -711,7 +739,7 @@ void WallpaperApplication::takeScreenshot (const std::filesystem::path& filename
     const std::string extStr = extension.string ();
 
     // Offload pixel processing and saving to a background thread to avoid hitches
-    std::thread ([captures, width, height, vflip, extStr, filename] () {
+    std::thread worker ([captures, width, height, vflip, extStr, filename] () {
 	auto* bitmap = new uint8_t[width * height * 3] { 0 };
 
 	for (const auto& capture : captures) {
@@ -752,7 +780,13 @@ void WallpaperApplication::takeScreenshot (const std::filesystem::path& filename
 	}
 
 	delete[] bitmap;
-    }).detach ();
+    });
+
+    if (async) {
+	worker.detach ();
+    } else {
+	worker.join ();
+    }
 }
 
 void WallpaperApplication::setupOutput () {
@@ -1078,10 +1112,60 @@ void WallpaperApplication::cleanup () {
 
 void WallpaperApplication::show () {
     setup ();
-    while (this->m_context.state.general.keepRunning) {
-	render ();
+
+    if (this->m_context.settings.record.enabled) {
+	this->recordFrameSequence ();
+    } else {
+	while (this->m_context.state.general.keepRunning) {
+	    render ();
+	}
     }
+
     cleanup ();
+}
+
+void WallpaperApplication::recordFrameSequence () {
+    const auto& record = this->m_context.settings.record;
+
+    std::error_code errorCode;
+    std::filesystem::create_directories (record.directory, errorCode);
+
+    if (errorCode) {
+	sLog.exception ("Cannot create recording directory ", record.directory.string (), ": ", errorCode.message ());
+    }
+
+    const float dt = 1.0f / static_cast<float> (record.fps);
+    const uint32_t totalFrames = record.seconds * record.fps;
+
+    sLog.out (
+	"Recording ", totalFrames, " frames (", record.seconds, "s @ ", record.fps, "fps) to ", record.directory.string ()
+    );
+
+    for (uint32_t frame = 0; frame < totalFrames && this->m_context.state.general.keepRunning; frame++) {
+	// step the render clock deterministically, independent of wall-clock time,
+	// so the resulting sequence is smooth and loopable
+	g_TimeLast = static_cast<float> (frame) * dt;
+	g_Time = static_cast<float> (frame + 1) * dt;
+
+	this->m_mediaSource->update ();
+	this->updatePlaylists ();
+
+	// use the driver's normal frame dispatch (instead of calling update() per viewport
+	// directly) so its internal frame counter advances; CWallpaper::render() skips
+	// re-rendering the scene when the frame counter hasn't changed, which would
+	// otherwise freeze the recording on the first frame
+	this->m_videoDriver->dispatchEventQueue ();
+
+	glFinish ();
+
+	char filename[32];
+	std::snprintf (filename, sizeof (filename), "frame_%05u.png", frame + 1);
+
+	// synchronous so every frame is flushed to disk before the process exits
+	this->takeScreenshot (record.directory / filename, false);
+    }
+
+    this->m_context.state.general.keepRunning = false;
 }
 
 void WallpaperApplication::update (Render::Drivers::Output::OutputViewport* viewport) {

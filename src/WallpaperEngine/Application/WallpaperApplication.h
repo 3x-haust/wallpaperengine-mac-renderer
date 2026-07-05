@@ -141,7 +141,12 @@ private:
      *
      * @param filename
      */
-    void takeScreenshot (const std::filesystem::path& filename) const;
+    void takeScreenshot (const std::filesystem::path& filename, bool async = true) const;
+    /**
+     * Renders the background offscreen for a fixed duration, writing a PNG frame sequence
+     * with deterministic timing (not tied to wall-clock time)
+     */
+    void recordFrameSequence ();
 
     struct ActivePlaylist {
 	ApplicationContext::PlaylistDefinition definition;

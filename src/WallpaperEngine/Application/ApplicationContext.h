@@ -185,6 +185,20 @@ public:
 	    /** The path to where the screenshot must be saved */
 	    std::filesystem::path path;
 	} screenshot;
+
+	/**
+	 * Offscreen frame-sequence recording settings
+	 */
+	struct {
+	    /** If frame-sequence recording should be performed */
+	    bool enabled;
+	    /** The directory where the PNG frames must be saved */
+	    std::filesystem::path directory;
+	    /** How many seconds of animation to record */
+	    uint32_t seconds;
+	    /** The framerate at which to record */
+	    uint32_t fps;
+	} record;
     } settings = {
         .general = {
             .onlyListProperties = false,
@@ -238,6 +252,12 @@ public:
             .take = false,
             .delay = 5,
             .path = "",
+        },
+        .record = {
+            .enabled = false,
+            .directory = "",
+            .seconds = 10,
+            .fps = 30,
         },
     };
 
