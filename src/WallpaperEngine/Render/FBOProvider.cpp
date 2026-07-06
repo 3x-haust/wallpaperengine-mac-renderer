@@ -6,7 +6,11 @@ using namespace WallpaperEngine::Render;
 using namespace WallpaperEngine::Data::Model;
 
 namespace {
-TextureFormat parseFBOFormat (const std::string& format) {
+// "rgba_backbuffer" means "whatever precision the current scene's main composite uses" - real WE picks this
+// based on the scene's HDR-ness rather than the host OS, so effect-declared backbuffer-format FBOs (e.g.
+// effects/shine/effect.json's _rt_HalfCompoBuffer1/2) must follow the same scene-wide HDR flag as the main
+// framebuffers, on every platform.
+TextureFormat parseFBOFormat (const std::string& format, bool hdrScene) {
     if (format == "rgba8888") {
 	return TextureFormat_ARGB8888;
     }
@@ -16,11 +20,7 @@ TextureFormat parseFBOFormat (const std::string& format) {
     }
 
     if (format == "rgba_backbuffer") {
-#if defined(__APPLE__)
-	return TextureFormat_RGBA16161616f;
-#else
-	return TextureFormat_ARGB8888;
-#endif
+	return hdrScene ? TextureFormat_RGBA16161616f : TextureFormat_ARGB8888;
     }
 
     sLog.error ("Unknown FBO format '", format, "', falling back to rgba8888");
@@ -28,11 +28,12 @@ TextureFormat parseFBOFormat (const std::string& format) {
 }
 }
 
-FBOProvider::FBOProvider (const FBOProvider* parent) : m_parent (parent) { }
+FBOProvider::FBOProvider (const FBOProvider* parent, bool hdr) :
+    m_parent (parent), m_hdr (parent != nullptr ? parent->isHdr () : hdr) { }
 
 std::shared_ptr<CFBO> FBOProvider::create (const FBO& base, uint32_t flags, const glm::vec2 size) {
     return this->m_fbos[base.name] = std::make_shared<CFBO> (
-	       base.name, parseFBOFormat (base.format), flags, base.scale, size.x / base.scale, size.y / base.scale, size.x / base.scale,
+	       base.name, parseFBOFormat (base.format, this->isHdr ()), flags, base.scale, size.x / base.scale, size.y / base.scale, size.x / base.scale,
 	       size.y / base.scale
 	   );
 }

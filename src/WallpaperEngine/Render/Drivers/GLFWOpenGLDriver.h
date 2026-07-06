@@ -32,6 +32,7 @@ public:
     [[nodiscard]] uint32_t getFrameCounter () const override;
     void dispatchEventQueue () override;
     [[nodiscard]] void* getProcAddress (const char* name) const override;
+    [[nodiscard]] const std::vector<uint8_t>* getRecordedFrameBuffer () const override;
 
     GLFWwindow* getWindow () const;
 
@@ -41,5 +42,9 @@ private:
     Output::Output* m_output = nullptr;
     GLFWwindow* m_window = nullptr;
     uint32_t m_frameCounter = 0;
+    // Post-tonemap capture of the default framebuffer, taken right before glfwSwapBuffers when
+    // recording is enabled (see dispatchEventQueue()). Empty/unused outside record mode.
+    std::vector<uint8_t> m_recordedFrameBuffer;
+    bool m_recordedFrameBufferValid = false;
 };
 } // namespace WallpaperEngine::Render::Drivers

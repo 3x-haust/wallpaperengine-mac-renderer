@@ -11,12 +11,20 @@
 
 using namespace WallpaperEngine::Render;
 
+namespace {
+// Scenes authored with "hdr":true expect their bloom/shine thresholds to be evaluated against un-clamped
+// composite values; only scenes carry that flag, so other wallpaper kinds (video/web) are always LDR.
+bool isHdrWallpaper (const Wallpaper& wallpaperData) {
+    return wallpaperData.is<Scene> () && wallpaperData.as<Scene> ()->hdr;
+}
+}
+
 CWallpaper::CWallpaper (
     const Wallpaper& wallpaperData, RenderContext& context, AudioContext& audioContext,
     const WallpaperState::TextureUVsScaling& scalingMode, const uint32_t& clampMode
 ) :
-    ContextAware (context), FBOProvider (nullptr), m_wallpaperData (wallpaperData), m_audioContext (audioContext),
-    m_state (scalingMode, clampMode) {
+    ContextAware (context), FBOProvider (nullptr, isHdrWallpaper (wallpaperData)), m_wallpaperData (wallpaperData),
+    m_audioContext (audioContext), m_state (scalingMode, clampMode) {
     // generate the VAO to stop opengl from complaining
     glGenVertexArrays (1, &this->m_vaoBuffer);
     glBindVertexArray (this->m_vaoBuffer);
@@ -109,14 +117,55 @@ void CWallpaper::setupShaders () {
     const GLuint fragmentShaderID = glCreateShader (GL_FRAGMENT_SHADER);
 
     // give shader's source code to OpenGL to be compiled
-    sourcePointer = "#version 330\n"
-		    "precision highp float;\n"
-		    "uniform sampler2D g_Texture0;\n"
-		    "in vec2 v_TexCoord;\n"
-		    "out vec4 out_FragColor;\n"
-		    "void main () {\n"
-		    "out_FragColor = texture (g_Texture0, v_TexCoord);\n"
-		    "}";
+    //
+    // This engine composites entirely in gamma/display space (no sRGB decode on sampling, no linear-light
+    // math anywhere) - matching upstream, which never touches texture encoding either. So there is no
+    // radiometric "linear HDR" here: "HDR" only means the composite is allowed to exceed 1.0 mid-pipeline
+    // instead of being clamped at every 8-bit stage, so bloom/shine thresholds (authored against true
+    // brightness) don't see an artificially flattened, over-large "everything is 1.0" region.
+    //
+    // The final blit is therefore the one and only place that needs to reconcile that with 8-bit display
+    // output. For non-HDR scenes it stays a pure passthrough (unchanged, full parity). For HDR scenes an
+    // exponential knee starting at k (< 1.0) compresses everything above k into the remaining (1 - k)
+    // headroom, asymptotically approaching (never reaching/clipping at) 1.0. Values below k pass through
+    // untouched, so mid-tone parity is preserved (the scene's water tone sits well below k). The knee must
+    // start BELOW 1.0: a knee anchored exactly at 1.0 has a gain term of (1 - low) = 0 for any input >= 1.0,
+    // which silently degenerates into a hard clip — every overbright pixel lands on a flat 255 plateau and
+    // star-glint ray falloffs render as solid white puffballs instead of crisp cores with fading rays.
+    // With k < 1.0 a gradient survives across the whole overbright region and only true peaks read as white.
+    //
+    // This stays per-channel rather than luminance-based. A hue-preserving luminance knee was tried and
+    // measured: it made the known magenta glint-core cast *worse* (core R-G went from a mild +1.9 to +37.8
+    // on this scene), which only makes sense if the true un-clamped HDR color feeding this blit is itself
+    // significantly red/magenta-biased - an upstream color-authoring/compositing property, not something
+    // introduced by this knee's math. (An 8-bit --dump-passes capture of the pass right before this blit
+    // looked green/neutral at first glance, but glReadPixels there reads back as GL_UNSIGNED_BYTE, which
+    // itself hard-clamps to [0,1] before the knee ever runs - exactly the overbright range this bug is
+    // about - so that capture cannot be trusted to reveal true relative channel magnitudes above 1.0.) Since
+    // the per-channel knee's incidental desaturation happens to land closer to the reference render for this
+    // scene, and the hue-preserving alternative demonstrably does not fix the root cause, it is kept as-is.
+    sourcePointer = this->isHdr ()
+	? "#version 330\n"
+	  "precision highp float;\n"
+	  "uniform sampler2D g_Texture0;\n"
+	  "in vec2 v_TexCoord;\n"
+	  "out vec4 out_FragColor;\n"
+	  "void main () {\n"
+	  "vec4 hdr = texture (g_Texture0, v_TexCoord);\n"
+	  "const float k = 0.6;\n"
+	  "vec3 low = min (hdr.rgb, vec3 (k));\n"
+	  "vec3 over = max (hdr.rgb - vec3 (k), vec3 (0.0));\n"
+	  "vec3 mapped = low + (1.0 - k) * (vec3 (1.0) - exp (-over / (1.0 - k)));\n"
+	  "out_FragColor = vec4 (clamp (mapped, 0.0, 1.0), hdr.a);\n"
+	  "}"
+	: "#version 330\n"
+	  "precision highp float;\n"
+	  "uniform sampler2D g_Texture0;\n"
+	  "in vec2 v_TexCoord;\n"
+	  "out vec4 out_FragColor;\n"
+	  "void main () {\n"
+	  "out_FragColor = texture (g_Texture0, v_TexCoord);\n"
+	  "}";
 
     glShaderSource (fragmentShaderID, 1, &sourcePointer, nullptr);
     glCompileShader (fragmentShaderID);
@@ -316,9 +365,12 @@ void CWallpaper::setupFramebuffers () {
     const uint32_t height = this->getHeight ();
     const uint32_t clamp = this->m_state.getClampingMode ();
 
-    // create framebuffer for the scene
+    // create framebuffer for the scene. HDR scenes composite in float precision so bloom/shine thresholds see
+    // true un-clamped brightness; the final tonemap (setupShaders()) compresses it back to displayable range.
+    const TextureFormat mainFormat = this->isHdr () ? TextureFormat_RGBA16161616f : TextureFormat_ARGB8888;
+
     this->m_sceneFBO = this->create (
-	"_rt_FullFrameBuffer", TextureFormat_ARGB8888, clamp, 1.0, { width, height }, { width, height }
+	"_rt_FullFrameBuffer", mainFormat, clamp, 1.0, { width, height }, { width, height }
     );
 
     this->alias ("_rt_MipMappedFrameBuffer", "_rt_FullFrameBuffer");

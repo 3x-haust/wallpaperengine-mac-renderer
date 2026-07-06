@@ -100,18 +100,39 @@ CScene::CScene (
 	this->addObjectToRenderOrder (*object);
     }
 
-    // create extra framebuffers for the bloom effect
+    // create extra framebuffers for the bloom effect. These carry the same precision as the main composite so
+    // an HDR scene's bloom pass sees true un-clamped brightness through the whole chain.
+    const TextureFormat bloomFormat = this->isHdr () ? TextureFormat_RGBA16161616f : TextureFormat_ARGB8888;
+
     this->_rt_4FrameBuffer = this->create (
-	"_rt_4FrameBuffer", TextureFormat_ARGB8888, TextureFlags_ClampUVs, 1.0, { sceneWidth / 4, sceneHeight / 4 },
+	"_rt_4FrameBuffer", bloomFormat, TextureFlags_ClampUVs, 1.0, { sceneWidth / 4, sceneHeight / 4 },
 	{ sceneWidth / 4, sceneHeight / 4 }
     );
     this->_rt_8FrameBuffer = this->create (
-	"_rt_8FrameBuffer", TextureFormat_ARGB8888, TextureFlags_ClampUVs, 1.0, { sceneWidth / 8, sceneHeight / 8 },
+	"_rt_8FrameBuffer", bloomFormat, TextureFlags_ClampUVs, 1.0, { sceneWidth / 8, sceneHeight / 8 },
 	{ sceneWidth / 8, sceneHeight / 8 }
     );
     this->_rt_Bloom = this->create (
-	"_rt_Bloom", TextureFormat_ARGB8888, TextureFlags_ClampUVs, 1.0, { sceneWidth / 8, sceneHeight / 8 },
+	"_rt_Bloom", bloomFormat, TextureFlags_ClampUVs, 1.0, { sceneWidth / 8, sceneHeight / 8 },
 	{ sceneWidth / 8, sceneHeight / 8 }
+    );
+
+    // Bright-pass input for the bloom chain. The bloom bright-pass (downsample_quarter_bloom.frag) tests
+    // saturate(brightness - bloomthreshold) against the authored threshold (this scene authors exactly 1.0),
+    // which only makes sense against a bounded, display-referred-ish signal - Windows/WE's real camera bloom
+    // does not see the arbitrarily large, unbounded HDR radiance our composite can accumulate (stacked
+    // emissive/shine layers can reach 10-50x). Feeding that raw un-clamped buffer directly made far more of
+    // the frame cross the authored threshold, and cross it by a much larger margin, than intended - inflating
+    // both the area and the strength of the bloom halo around bright cores. This buffer carries the same
+    // un-clamped composite through a soft ceiling (see hdr_knee.frag) before the bright-pass reads it, so the
+    // threshold test sees a bounded range instead of unbounded pileup, without touching the authored
+    // bloomthreshold/bloomstrength values themselves. It must stay in float precision (not 8-bit) even though
+    // it's "conditioned": legitimate glint/shine sources still need to read above 1.0 to clear a threshold of
+    // 1.0 at all, so this cannot be display-clamped to <= 1.0 the way the final on-screen blit is - that would
+    // make bloom vanish outright for this scene. For non-HDR scenes this is a no-op copy (already <= 1).
+    this->_rt_FullFrameBufferBloomSrc = this->create (
+	"_rt_FullFrameBufferBloomSrc", bloomFormat, TextureFlags_ClampUVs, 1.0, { sceneWidth, sceneHeight },
+	{ sceneWidth, sceneHeight }
     );
 
     //

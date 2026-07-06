@@ -282,11 +282,16 @@ CImage::CImage (Wallpapers::CScene& scene, const Image& image) :
     nameA << "_rt_imageLayerComposite_" << this->getImage ().id << "_a";
     nameB << "_rt_imageLayerComposite_" << this->getImage ().id << "_b";
 
+    // These ping-pong buffers hold this object's own material+effects composite (e.g. what a per-object effect
+    // like shine reads as "previous"). They must match the scene's HDR precision, otherwise HDR scenes would
+    // still get their per-object brightness clamped to 8-bit right before effect thresholds evaluate it.
+    const TextureFormat layerFormat = scene.isHdr () ? TextureFormat_RGBA16161616f : TextureFormat_ARGB8888;
+
     this->m_currentMainFBO = this->m_mainFBO = scene.create (
-	nameA.str (), TextureFormat_ARGB8888, this->m_texture->getFlags (), 1, { size.x, size.y }, { size.x, size.y }
+	nameA.str (), layerFormat, this->m_texture->getFlags (), 1, { size.x, size.y }, { size.x, size.y }
     );
     this->m_currentSubFBO = this->m_subFBO = scene.create (
-	nameB.str (), TextureFormat_ARGB8888, this->m_texture->getFlags (), 1, { size.x, size.y }, { size.x, size.y }
+	nameB.str (), layerFormat, this->m_texture->getFlags (), 1, { size.x, size.y }, { size.x, size.y }
     );
 
     // build a list of vertices, these might need some change later (or maybe invert the camera)

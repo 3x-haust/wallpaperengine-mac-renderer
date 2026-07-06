@@ -105,6 +105,13 @@ struct SceneData {
 	} projection;
     } camera;
 
+    /**
+     * Whether the scene was authored for HDR compositing (scene.json "general.hdr").
+     * When true, the renderer composites in float precision so values above 1.0
+     * survive until the final tonemap, matching what the bloom/shine thresholds expect.
+     */
+    bool hdr = false;
+
     ObjectList objects;
 };
 

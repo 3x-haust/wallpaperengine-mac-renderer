@@ -70,6 +70,7 @@ private:
     std::shared_ptr<const CFBO> _rt_4FrameBuffer = nullptr;
     std::shared_ptr<const CFBO> _rt_8FrameBuffer = nullptr;
     std::shared_ptr<const CFBO> _rt_Bloom = nullptr;
+    std::shared_ptr<const CFBO> _rt_FullFrameBufferBloomSrc = nullptr;
     std::shared_ptr<const CFBO> _rt_shadowAtlas = nullptr;
 };
 } // namespace WallpaperEngine::Render::Wallpaper

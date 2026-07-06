@@ -207,9 +207,12 @@ AssetLocatorUniquePtr WallpaperApplication::setupAssetLocator (const std::string
 	  {
 	      "passes",
 	      JSON::array (
-		  { { { "material", "materials/util/downsample_quarter_bloom.json" },
-		      { "target", "_rt_4FrameBuffer" },
+		  { { { "material", "materials/util/hdr_knee.json" },
+		      { "target", "_rt_FullFrameBufferBloomSrc" },
 		      { "bind", JSON::array ({ { { "name", "_rt_FullFrameBuffer" }, { "index", 0 } } }) } },
+		    { { "material", "materials/util/downsample_quarter_bloom.json" },
+		      { "target", "_rt_4FrameBuffer" },
+		      { "bind", JSON::array ({ { { "name", "_rt_FullFrameBufferBloomSrc" }, { "index", 0 } } }) } },
 		    { { "material", "materials/util/downsample_eighth_blur_v.json" },
 		      { "target", "_rt_8FrameBuffer" },
 		      { "bind", JSON::array ({ { { "name", "_rt_4FrameBuffer" }, { "index", 0 } } }) } },
@@ -242,7 +245,11 @@ AssetLocatorUniquePtr WallpaperApplication::setupAssetLocator (const std::string
     );
     vfs.add (
 	"materials/util/downsample_quarter_bloom.json",
-	R"({"passes":[{"shader":"downsample_quarter_bloom","cullmode":"nocull","depthtest":"disabled","depthwrite":"disabled","textures":["_rt_FullFrameBuffer"]}]})"
+	R"({"passes":[{"shader":"downsample_quarter_bloom","cullmode":"nocull","depthtest":"disabled","depthwrite":"disabled","textures":["_rt_FullFrameBufferBloomSrc"]}]})"
+    );
+    vfs.add (
+	"materials/util/hdr_knee.json",
+	R"({"passes":[{"shader":"commands/hdr_knee","cullmode":"nocull","depthtest":"disabled","depthwrite":"disabled","textures":["_rt_FullFrameBuffer"]}]})"
     );
     vfs.add (
 	"materials/util/downsample_eighth_blur_v.json",
@@ -280,6 +287,38 @@ AssetLocatorUniquePtr WallpaperApplication::setupAssetLocator (const std::string
     );
     vfs.add (
 	"shaders/commands/copy.vert",
+	"in vec3 a_Position;\n"
+	"in vec2 a_TexCoord;\n"
+	"out vec2 v_TexCoord;\n"
+	"void main () {\n"
+	"gl_Position = vec4 (a_Position, 1.0);\n"
+	"v_TexCoord = a_TexCoord;\n"
+	"}"
+    );
+
+    // Bright-pass input conditioner for the bloom chain (see setup of "_rt_FullFrameBufferBloomSrc" in CScene).
+    // Unlike the final on-screen tonemap (which must land in [0,1] for 8-bit display), this soft ceiling keeps
+    // a wide overbright headroom: values up to "k" pass through untouched, values above it compress
+    // asymptotically towards k + headroom instead of towards 1.0. This bounds the unbounded HDR pileup our
+    // composite can otherwise accumulate (stacked emissive/shine layers reaching 10-50x) while still letting
+    // genuinely bright glint/shine sources read comfortably above an authored bloomthreshold of 1.0, which a
+    // display-range clamp cannot do (it would make bloom vanish whenever threshold >= 1.0).
+    vfs.add (
+	"shaders/commands/hdr_knee.frag",
+	"uniform sampler2D g_Texture0;\n"
+	"in vec2 v_TexCoord;\n"
+	"void main () {\n"
+	"vec4 hdr = texture (g_Texture0, v_TexCoord);\n"
+	"const float k = 1.5;\n"
+	"const float headroom = 2.5;\n"
+	"vec3 low = min (hdr.rgb, vec3 (k));\n"
+	"vec3 over = max (hdr.rgb - vec3 (k), vec3 (0.0));\n"
+	"vec3 mapped = low + headroom * (vec3 (1.0) - exp (-over / headroom));\n"
+	"out_FragColor = vec4 (max (mapped, vec3 (0.0)), hdr.a);\n"
+	"}"
+    );
+    vfs.add (
+	"shaders/commands/hdr_knee.vert",
 	"in vec3 a_Position;\n"
 	"in vec2 a_TexCoord;\n"
 	"out vec2 v_TexCoord;\n"
@@ -860,6 +899,25 @@ void WallpaperApplication::takeScreenshot (const std::filesystem::path& filename
     }
 }
 
+void WallpaperApplication::writeRecordedFrame (
+    const std::filesystem::path& filename, const std::vector<uint8_t>& pixels
+) const {
+    const int width = this->m_renderContext->getOutput ().getFullWidth ();
+    const int height = this->m_renderContext->getOutput ().getFullHeight ();
+    const size_t rowBytes = static_cast<size_t> (width) * 3;
+
+    std::vector<uint8_t> flipped (pixels.size ());
+
+    for (int y = 0; y < height; y++) {
+	std::memcpy (
+	    &flipped[static_cast<size_t> (y) * rowBytes], &pixels[static_cast<size_t> (height - y - 1) * rowBytes],
+	    rowBytes
+	);
+    }
+
+    stbi_write_png (filename.c_str (), width, height, 3, flipped.data (), static_cast<int> (rowBytes));
+}
+
 void WallpaperApplication::setupOutput () {
     const char* XDG_SESSION_TYPE = getenv ("XDG_SESSION_TYPE");
 
@@ -1242,8 +1300,18 @@ void WallpaperApplication::recordFrameSequence () {
 	char filename[32];
 	std::snprintf (filename, sizeof (filename), "frame_%05u.png", frame + 1);
 
-	// synchronous so every frame is flushed to disk before the process exits
-	this->takeScreenshot (record.directory / filename, false);
+	// Prefer the post-tonemap frame the driver captured from the default framebuffer right
+	// before the swap (see GLFWOpenGLDriver::dispatchEventQueue). Falling back to
+	// takeScreenshot() here would re-read the wallpaper's raw scene FBO, which for HDR
+	// scenes is the pre-tonemap float composite - bypassing the final blit's tonemap shader
+	// entirely and clamping overbright values straight to a flat 255 plateau instead of the
+	// gradient actually shown on screen.
+	if (const auto* recordedFrame = this->m_videoDriver->getRecordedFrameBuffer ()) {
+	    this->writeRecordedFrame (record.directory / filename, *recordedFrame);
+	} else {
+	    // synchronous so every frame is flushed to disk before the process exits
+	    this->takeScreenshot (record.directory / filename, false);
+	}
     }
 
     this->m_context.state.general.keepRunning = false;

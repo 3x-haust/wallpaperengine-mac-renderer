@@ -169,6 +169,39 @@ void GLFWOpenGLDriver::dispatchEventQueue () {
 	}
     }
 
+    // Offscreen recording: capture the DEFAULT framebuffer (the window's back buffer), where
+    // CWallpaper::render() just blitted the tonemapped, display-ready image via getApp().update()
+    // above. This must happen here, after that blit and BEFORE glfwSwapBuffers below - reading
+    // it any later (e.g. from the recording code after this function returns) would either read
+    // stale/undefined back-buffer contents post-swap, or force falling back to the wallpaper's
+    // raw (possibly HDR, pre-tonemap) scene framebuffer instead.
+    if (this->m_context.settings.record.enabled) {
+	const GLint width = this->m_output->getFullWidth ();
+	const GLint height = this->m_output->getFullHeight ();
+	const size_t bufferSize = static_cast<size_t> (width) * static_cast<size_t> (height) * 3;
+
+	this->m_recordedFrameBuffer.resize (bufferSize);
+
+	glBindFramebuffer (GL_FRAMEBUFFER, 0);
+	glReadBuffer (GL_BACK);
+	glPixelStorei (GL_PACK_ALIGNMENT, 1);
+
+	if (GLEW_VERSION_4_5) {
+	    glReadnPixels (
+		0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, static_cast<GLsizei> (bufferSize),
+		this->m_recordedFrameBuffer.data ()
+	    );
+	} else {
+	    glReadPixels (0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, this->m_recordedFrameBuffer.data ());
+	}
+
+	if (const GLenum recordError = glGetError (); recordError != GL_NO_ERROR) {
+	    sLog.exception ("OpenGL error when reading recorded frame ", recordError);
+	}
+
+	this->m_recordedFrameBufferValid = true;
+    }
+
     // TODO: FRAMETIME CONTROL SHOULD GO BACK TO THE CWALLPAPAERAPPLICATION ONCE ACTUAL PARTICLES ARE IMPLEMENTED
     // TODO: AS THOSE, MORE THAN LIKELY, WILL REQUIRE OF A DIFFERENT PROCESSING RATE
     // update the output with the given image
@@ -193,6 +226,10 @@ void* GLFWOpenGLDriver::getProcAddress (const char* name) const {
 }
 
 GLFWwindow* GLFWOpenGLDriver::getWindow () const { return this->m_window; }
+
+const std::vector<uint8_t>* GLFWOpenGLDriver::getRecordedFrameBuffer () const {
+    return this->m_recordedFrameBufferValid ? &this->m_recordedFrameBuffer : nullptr;
+}
 
 __attribute__ ((constructor)) void registerGLFWOpenGLDriver () {
     sVideoFactories.registerDriver (

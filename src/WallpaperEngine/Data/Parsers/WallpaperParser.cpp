@@ -77,6 +77,7 @@ SceneUniquePtr WallpaperParser::parseScene (const JSON& file, Project& project) 
                     .fov = camera.user ("fov", properties, 50.0f)
                 }
             },
+            .hdr = general.optional<bool> ("hdr", false),
             .objects = parseObjects (objects, project),
         }
     );

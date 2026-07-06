@@ -4,22 +4,21 @@
 using namespace WallpaperEngine::Render;
 
 namespace {
+// FBO precision follows the format the scene/effect asked for (see FBOProvider::parseFBOFormat), not the host
+// OS. HDR scenes need float-precision main/effect buffers so values above 1.0 survive until the final tonemap;
+// GL_RGBA16F/GL_HALF_FLOAT are core desktop GL (3.0+), so this is safe on every platform this renderer targets.
 GLint getInternalFormat (const TextureFormat format) {
-#if defined(__APPLE__)
     if (format == TextureFormat_RGBA16161616f) {
 	return GL_RGBA16F;
     }
-#endif
 
     return GL_RGBA8;
 }
 
 GLenum getUploadType (const TextureFormat format) {
-#if defined(__APPLE__)
     if (format == TextureFormat_RGBA16161616f) {
 	return GL_HALF_FLOAT;
     }
-#endif
 
     return GL_UNSIGNED_BYTE;
 }

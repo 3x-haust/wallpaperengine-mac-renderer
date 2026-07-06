@@ -6,6 +6,7 @@
 #include <glm/vec2.hpp>
 #include <glm/vec4.hpp>
 #include <string>
+#include <vector>
 
 namespace WallpaperEngine::Application {
 class WallpaperApplication;
@@ -71,6 +72,18 @@ public:
      * Process events on the driver and renders a frame
      */
     virtual void dispatchEventQueue () = 0;
+    /**
+     * Offscreen recording reads pixels after dispatchEventQueue() has already swapped
+     * buffers, so re-reading a wallpaper's raw scene framebuffer at that point would land on
+     * the pre-tonemap HDR composite (bypassing the final blit's tonemap shader) instead of the
+     * pixels actually shown on screen. Drivers that support it capture the post-tonemap default
+     * framebuffer right before the swap, during dispatchEventQueue(), and expose it here as a
+     * tightly packed RGB byte buffer (width * height * 3), matching the output's full size.
+     *
+     * @return The most recently captured post-tonemap frame, or nullptr if unavailable (e.g.
+     *         recording isn't enabled, or the driver doesn't support this capture)
+     */
+    [[nodiscard]] virtual const std::vector<uint8_t>* getRecordedFrameBuffer () const { return nullptr; }
     /**
      * @return The app that owns this driver
      */

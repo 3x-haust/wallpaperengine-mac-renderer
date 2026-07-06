@@ -147,6 +147,16 @@ private:
      * with deterministic timing (not tied to wall-clock time)
      */
     void recordFrameSequence ();
+    /**
+     * Writes a driver-captured post-tonemap frame (see VideoDriver::getRecordedFrameBuffer())
+     * out as a PNG. The buffer is a tightly packed RGB byte array read directly from the
+     * default framebuffer, which OpenGL provides bottom-to-top, so rows are flipped to the
+     * usual top-to-bottom image order before writing.
+     *
+     * @param filename destination PNG path
+     * @param pixels tightly packed RGB buffer, width * height * 3 bytes
+     */
+    void writeRecordedFrame (const std::filesystem::path& filename, const std::vector<uint8_t>& pixels) const;
 
     struct ActivePlaylist {
 	ApplicationContext::PlaylistDefinition definition;
