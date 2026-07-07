@@ -565,6 +565,17 @@ void ApplicationContext::loadSettingsFromArgv () {
 	    this->settings.record.directory = value;
 	});
 
+    recordGroup.add_argument ("--record-raw")
+	.help (
+	    "Renders the background offscreen and streams tightly packed raw RGBA frames to the given path "
+	    "(a regular file or a FIFO). Mutually exclusive with --record-dir"
+	)
+	.default_value ("")
+	.action ([this] (const std::string& value) -> void {
+	    this->settings.record.enabled = true;
+	    this->settings.record.rawPath = value;
+	});
+
     recordGroup.add_argument ("--record-seconds")
 	.help ("How many seconds of animation to record")
 	.default_value<uint32_t> (10)
@@ -706,6 +717,10 @@ void ApplicationContext::loadSettingsFromArgv () {
 	if (this->settings.record.enabled) {
 	    this->settings.record.fps = std::max<uint32_t> (1, this->settings.record.fps);
 	    this->settings.record.seconds = std::max<uint32_t> (1, this->settings.record.seconds);
+
+	    if (!this->settings.record.directory.empty () && !this->settings.record.rawPath.empty ()) {
+		throw std::runtime_error ("--record-dir and --record-raw are mutually exclusive");
+	    }
 	}
 
 	// use std::cout on this in case logging is disabled, this way it's easy to look at what is running

@@ -144,9 +144,17 @@ private:
     void takeScreenshot (const std::filesystem::path& filename, bool async = true) const;
     /**
      * Renders the background offscreen for a fixed duration, writing a PNG frame sequence
-     * with deterministic timing (not tied to wall-clock time)
+     * with deterministic timing (not tied to wall-clock time). Dispatches to
+     * recordFrameSequenceRaw() instead when --record-raw was requested.
      */
     void recordFrameSequence ();
+    /**
+     * Renders the background offscreen for a fixed duration, streaming tightly packed raw
+     * RGBA frames to settings.record.rawPath (a regular file or a FIFO) from a dedicated
+     * writer thread, so a slow consumer only backpressures via blocking write() instead of
+     * stalling the render loop's glReadPixels/memcpy handoff.
+     */
+    void recordFrameSequenceRaw ();
     /**
      * Writes a driver-captured post-tonemap frame (see VideoDriver::getRecordedFrameBuffer())
      * out as a PNG. The buffer is a tightly packed RGB byte array read directly from the

@@ -33,6 +33,14 @@
 #include <sstream>
 #include <unistd.h>
 #include <vector>
+
+#include <atomic>
+#include <condition_variable>
+#include <cerrno>
+#include <mutex>
+#include <queue>
+#include <fcntl.h>
+#include <sys/stat.h>
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
@@ -58,6 +66,137 @@ public:
 
 private:
     void performUpdate () override { }
+};
+
+/**
+ * Streams tightly packed raw frames to a file or FIFO from a dedicated writer thread.
+ *
+ * The render loop calls acquire()/buffer()/submit() to hand off a freshly captured frame; the
+ * writer thread performs the (potentially blocking, e.g. on a slow FIFO consumer) write() call
+ * on its own thread so the render loop only stalls once every ring slot is full, rather than on
+ * every single frame.
+ */
+class RawFrameWriter {
+public:
+    RawFrameWriter (const std::filesystem::path& path, size_t frameBytes, size_t ringSize = 3) :
+	m_frameBytes (frameBytes), m_ring (ringSize, std::vector<uint8_t> (frameBytes)) {
+	struct stat st { };
+	const bool isFifo = ::stat (path.c_str (), &st) == 0 && S_ISFIFO (st.st_mode);
+
+	m_fd = isFifo ? ::open (path.c_str (), O_WRONLY) : ::open (path.c_str (), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+
+	if (m_fd < 0) {
+	    sLog.exception ("Cannot open raw record output ", path.string (), ": ", std::strerror (errno));
+	}
+
+	for (size_t i = 0; i < ringSize; i++) {
+	    m_freeSlots.push (i);
+	}
+
+	m_thread = std::thread (&RawFrameWriter::run, this);
+    }
+
+    RawFrameWriter (const RawFrameWriter&) = delete;
+    RawFrameWriter& operator= (const RawFrameWriter&) = delete;
+
+    ~RawFrameWriter () { finish (); }
+
+    /** Blocks until a ring slot is free, then returns its index. */
+    size_t acquire () {
+	std::unique_lock lock (m_mutex);
+	m_freeCv.wait (lock, [this] { return !m_freeSlots.empty (); });
+	const size_t slot = m_freeSlots.front ();
+	m_freeSlots.pop ();
+	return slot;
+    }
+
+    std::vector<uint8_t>& buffer (size_t slot) { return m_ring[slot]; }
+
+    /** Hands the filled slot off to the writer thread. */
+    void submit (size_t slot) {
+	{
+	    std::lock_guard lock (m_mutex);
+	    m_readySlots.push (slot);
+	}
+	m_readyCv.notify_one ();
+    }
+
+    /** Flushes remaining frames, joins the writer thread, and closes the output. */
+    void finish () {
+	if (m_finished.exchange (true)) {
+	    return;
+	}
+
+	{
+	    std::lock_guard lock (m_mutex);
+	    m_done = true;
+	}
+	m_readyCv.notify_one ();
+
+	if (m_thread.joinable ()) {
+	    m_thread.join ();
+	}
+
+	if (m_fd >= 0) {
+	    ::close (m_fd);
+	    m_fd = -1;
+	}
+    }
+
+private:
+    void run () {
+	while (true) {
+	    std::unique_lock lock (m_mutex);
+	    m_readyCv.wait (lock, [this] { return !m_readySlots.empty () || m_done; });
+
+	    if (m_readySlots.empty ()) {
+		if (m_done) {
+		    break;
+		}
+		continue;
+	    }
+
+	    const size_t slot = m_readySlots.front ();
+	    m_readySlots.pop ();
+	    lock.unlock ();
+
+	    const uint8_t* data = m_ring[slot].data ();
+	    size_t remaining = m_frameBytes;
+
+	    while (remaining > 0) {
+		const ssize_t written = ::write (m_fd, data, remaining);
+
+		if (written < 0) {
+		    if (errno == EINTR) {
+			continue;
+		    }
+		    sLog.error ("Error writing raw record frame: ", std::strerror (errno));
+		    break;
+		}
+
+		data += written;
+		remaining -= static_cast<size_t> (written);
+	    }
+
+	    {
+		std::lock_guard freeLock (m_mutex);
+		m_freeSlots.push (slot);
+	    }
+	    m_freeCv.notify_one ();
+	}
+    }
+
+    size_t m_frameBytes;
+    std::vector<std::vector<uint8_t>> m_ring;
+    std::queue<size_t> m_freeSlots;
+    std::queue<size_t> m_readySlots;
+    std::mutex m_mutex;
+    std::condition_variable m_freeCv;
+    std::condition_variable m_readyCv;
+    bool m_done = false;
+    std::atomic<bool> m_finished { false };
+    std::thread m_thread;
+    int m_fd = -1;
 };
 
 const std::vector<std::filesystem::path>& requiredEngineAssetPaths () {
@@ -1264,6 +1403,11 @@ void WallpaperApplication::show () {
 }
 
 void WallpaperApplication::recordFrameSequence () {
+    if (!this->m_context.settings.record.rawPath.empty ()) {
+	this->recordFrameSequenceRaw ();
+	return;
+    }
+
     const auto& record = this->m_context.settings.record;
 
     std::error_code errorCode;
@@ -1313,6 +1457,76 @@ void WallpaperApplication::recordFrameSequence () {
 	    this->takeScreenshot (record.directory / filename, false);
 	}
     }
+
+    this->m_context.state.general.keepRunning = false;
+}
+
+void WallpaperApplication::recordFrameSequenceRaw () {
+    const auto& record = this->m_context.settings.record;
+
+    const int width = this->m_renderContext->getOutput ().getFullWidth ();
+    const int height = this->m_renderContext->getOutput ().getFullHeight ();
+    const size_t rowBytes = static_cast<size_t> (width) * 4;
+    const size_t frameBytes = rowBytes * static_cast<size_t> (height);
+
+    const float dt = 1.0f / static_cast<float> (record.fps);
+    const uint32_t totalFrames = record.seconds * record.fps;
+
+    // machine-readable header, printed before the first frame so the consumer can size its
+    // ffmpeg/rawvideo pipe ahead of time
+    std::cout << "RECORD_RAW format=rgba width=" << width << " height=" << height << " fps=" << record.fps
+	       << " frames=" << totalFrames << std::endl;
+    std::cout.flush ();
+
+    sLog.out (
+	"Recording ", totalFrames, " raw frames (", record.seconds, "s @ ", record.fps, "fps) to ",
+	record.rawPath.string ()
+    );
+
+    RawFrameWriter writer (record.rawPath, frameBytes);
+
+    for (uint32_t frame = 0; frame < totalFrames && this->m_context.state.general.keepRunning; frame++) {
+	// step the render clock deterministically, independent of wall-clock time,
+	// so the resulting sequence is smooth and loopable
+	g_TimeLast = static_cast<float> (frame) * dt;
+	g_Time = static_cast<float> (frame + 1) * dt;
+
+	this->m_mediaSource->update ();
+	this->updatePlaylists ();
+
+	// use the driver's normal frame dispatch (instead of calling update() per viewport
+	// directly) so its internal frame counter advances; CWallpaper::render() skips
+	// re-rendering the scene when the frame counter hasn't changed, which would
+	// otherwise freeze the recording on the first frame
+	this->m_videoDriver->dispatchEventQueue ();
+
+	glFinish ();
+
+	// Prefer the post-tonemap frame the driver captured from the default framebuffer right
+	// before the swap (see GLFWOpenGLDriver::dispatchEventQueue); it is captured as RGBA
+	// while record.rawPath is set (see the same function).
+	const auto* recordedFrame = this->m_videoDriver->getRecordedFrameBuffer ();
+
+	if (recordedFrame == nullptr || recordedFrame->size () != frameBytes) {
+	    sLog.exception ("Raw recording requires the video driver's RGBA back-buffer capture");
+	}
+
+	const size_t slot = writer.acquire ();
+	std::vector<uint8_t>& dest = writer.buffer (slot);
+
+	// the driver captures the default framebuffer bottom-up (OpenGL row order); flip to
+	// top-down row order to match rawvideo/ffmpeg expectations
+	for (int y = 0; y < height; y++) {
+	    std::memcpy (
+		&dest[static_cast<size_t> (y) * rowBytes],
+		&(*recordedFrame)[static_cast<size_t> (height - y - 1) * rowBytes], rowBytes
+	    );
+	}
+
+	writer.submit (slot);
+    }
+
+    writer.finish ();
 
     this->m_context.state.general.keepRunning = false;
 }

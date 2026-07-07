@@ -190,10 +190,12 @@ public:
 	 * Offscreen frame-sequence recording settings
 	 */
 	struct {
-	    /** If frame-sequence recording should be performed */
+	    /** If frame-sequence recording should be performed (either PNG or raw mode) */
 	    bool enabled;
-	    /** The directory where the PNG frames must be saved */
+	    /** The directory where the PNG frames must be saved (--record-dir mode) */
 	    std::filesystem::path directory;
+	    /** The file or FIFO path to stream tightly packed raw RGBA frames to (--record-raw mode) */
+	    std::filesystem::path rawPath;
 	    /** How many seconds of animation to record */
 	    uint32_t seconds;
 	    /** The framerate at which to record */
@@ -258,6 +260,7 @@ public:
         .record = {
             .enabled = false,
             .directory = "",
+            .rawPath = "",
             .seconds = 10,
             .fps = 30,
             .excludeLive = false,

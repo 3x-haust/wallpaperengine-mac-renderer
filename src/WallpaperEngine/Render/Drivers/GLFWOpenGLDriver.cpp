@@ -178,7 +178,13 @@ void GLFWOpenGLDriver::dispatchEventQueue () {
     if (this->m_context.settings.record.enabled) {
 	const GLint width = this->m_output->getFullWidth ();
 	const GLint height = this->m_output->getFullHeight ();
-	const size_t bufferSize = static_cast<size_t> (width) * static_cast<size_t> (height) * 3;
+	// --record-raw streams RGBA (matches ffmpeg's rawvideo rgba pix_fmt directly); --record-dir's
+	// PNG path only needs RGB. These modes are mutually exclusive, so it's safe to pick the format
+	// per-run instead of always reading the extra alpha channel.
+	const bool rawMode = !this->m_context.settings.record.rawPath.empty ();
+	const int channels = rawMode ? 4 : 3;
+	const GLenum format = rawMode ? GL_RGBA : GL_RGB;
+	const size_t bufferSize = static_cast<size_t> (width) * static_cast<size_t> (height) * static_cast<size_t> (channels);
 
 	this->m_recordedFrameBuffer.resize (bufferSize);
 
@@ -188,11 +194,11 @@ void GLFWOpenGLDriver::dispatchEventQueue () {
 
 	if (GLEW_VERSION_4_5) {
 	    glReadnPixels (
-		0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, static_cast<GLsizei> (bufferSize),
+		0, 0, width, height, format, GL_UNSIGNED_BYTE, static_cast<GLsizei> (bufferSize),
 		this->m_recordedFrameBuffer.data ()
 	    );
 	} else {
-	    glReadPixels (0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, this->m_recordedFrameBuffer.data ());
+	    glReadPixels (0, 0, width, height, format, GL_UNSIGNED_BYTE, this->m_recordedFrameBuffer.data ());
 	}
 
 	if (const GLenum recordError = glGetError (); recordError != GL_NO_ERROR) {
