@@ -650,6 +650,44 @@ void CImage::setup () {
 	);
     }
 
+    // Objects that use WE's generic "composelayer" bridge model (materials/util/composelayer*.json, used by any
+    // object with post-effects - shine, waterripple, waterwaves, etc. - to feed the current scene composite into
+    // its own effect chain) just copied the raw, still-unclamped HDR "_rt_FullFrameBuffer" above. On HDR scenes
+    // that raw buffer carries the same unbounded overbright pileup (stacked emissive/shine layers reaching
+    // 10-50x) that the camera-bloom bright-pass already had to be shielded from - see the setup of
+    // "_rt_FullFrameBufferBloomSrc" in CScene.cpp. Left unconditioned, brightness-threshold effects further down
+    // this object's own chain (e.g. the shine effect's raythreshold seed pass) fire on far more pixels than
+    // intended, producing far more glints than Windows/WE. Condition this object's own copy in place with the
+    // exact same hdr_knee curve, computed fresh every frame from this object's own already-in-progress snapshot
+    // (never a cross-frame/scene-shared buffer), so this object's own additions this frame can never feed back
+    // into what it reads next frame.
+    if (!debug.baseOnly && this->getScene ().isHdr ()
+	&& std::any_of (
+	    this->getImage ().model->material->passes.begin (), this->getImage ().model->material->passes.end (),
+	    [] (const auto& pass) { return pass->shader == "composelayer"; }
+	)) {
+	auto knee = std::make_unique<MaterialPass> (MaterialPass {
+	    .blending = BlendingMode_Normal,
+	    .cullmode = CullingMode_Disable,
+	    .depthtest = DepthtestMode_Disabled,
+	    .depthwrite = DepthwriteMode_Disabled,
+	    .shader = "commands/hdr_knee",
+	    .textures = {},
+	    .usertextures = {},
+	    .combos = {},
+	    .constants = {},
+	});
+
+	const auto& config = *this->m_virtualPassess.emplace_back (std::move (knee));
+	auto previousBind = std::make_unique<TextureMap> (TextureMap { { 0, "previous" } });
+	const auto& bindsRef = *this->m_virtualBinds.emplace_back (std::move (previousBind));
+
+	this->m_passes.push_back (new CPass (
+	    *this, std::make_shared<FBOProvider> (this), config, std::nullopt,
+	    std::optional<std::reference_wrapper<const TextureMap>> (bindsRef), std::nullopt
+	));
+    }
+
     // prepare the passes list
     if (!debug.baseOnly && !this->getImage ().effects.empty ()) {
 	// generate the effects used by this material
@@ -1157,6 +1195,15 @@ const Image& CImage::getImage () const { return this->m_image; }
 
 glm::vec2 CImage::getSize () const {
     if (this->m_texture == nullptr) {
+	return this->getImage ().size;
+    }
+
+    // A texture resolved to a scene-wide shared render target (see CRenderable::detectTexture) is only ever
+    // an input sample source for bridge materials like "composelayer" - its resolution is the whole scene's,
+    // not this object's authored footprint. Falling through to it here would inflate a small object's own
+    // size (and therefore its per-object effect chain's buffers, e.g. a shine effect's downsample targets)
+    // to full-scene resolution, turning a small localized effect into a giant blurred, oversized one.
+    if (this->m_textureIsSharedRenderTarget) {
 	return this->getImage ().size;
     }
 

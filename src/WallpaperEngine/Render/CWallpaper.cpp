@@ -1,5 +1,6 @@
 #include "CWallpaper.h"
 #include "WallpaperEngine/Logging/Log.h"
+#include <algorithm>
 #include "WallpaperEngine/Render/Wallpapers/CScene.h"
 #include "WallpaperEngine/Render/Wallpapers/CVideo.h"
 #ifndef WPENGINE_SCENE_ONLY
@@ -319,6 +320,22 @@ void CWallpaper::render (
 	vstart = uvs.vstart;
 	vend = uvs.vend;
     }
+
+    // The "default" (and span) scaling math above picks a single scale factor from one dimension
+    // (e.g. match-by-width) and derives the other axis's crop from it; it does not verify that the
+    // result actually covers the viewport, so at aspect-ratio combinations where that assumption
+    // doesn't hold, it can under-fit and hand back a UV range that overshoots the texture's valid
+    // [0,1] bounds instead of a proper inward crop. Sampling outside that range against a
+    // CLAMP_TO_EDGE texture then repeats a single source row/column across every output row/column
+    // in the overshoot band - and since that edge row is ordinary high-frequency scene content
+    // (e.g. water ripples), the repeated copies read back as vertical/horizontal stripe garbage,
+    // worst right at the top/bottom (or left/right) edges. Clamping here guarantees we only ever
+    // sample real, distinct texture rows/columns, so at worst the crop is very slightly less
+    // aggressive than intended instead of smearing one row across a whole edge band.
+    ustart = std::clamp (ustart, 0.0f, 1.0f);
+    uend = std::clamp (uend, 0.0f, 1.0f);
+    vstart = std::clamp (vstart, 0.0f, 1.0f);
+    vend = std::clamp (vend, 0.0f, 1.0f);
 
     const GLfloat texCoords[] = {
 	ustart, vstart, uend, vstart, ustart, vend, ustart, vend, uend, vstart, uend, vend,

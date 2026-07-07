@@ -36,5 +36,12 @@ protected:
 
     std::shared_ptr<const TextureProvider> m_texture = nullptr;
     const Material& m_material;
+
+    // True when m_texture was resolved from a scene-wide shared render target (e.g. "_rt_FullFrameBuffer",
+    // bound by the "composelayer"/"passthrough"/"fullscreenlayer" bridge materials so an object can read back
+    // the current composite). That buffer's resolution is the whole scene's, not this object's - it is only
+    // ever an *input sample source*, never a stand-in for this object's own authored footprint. See
+    // CImage::getSize().
+    bool m_textureIsSharedRenderTarget = false;
 };
 }

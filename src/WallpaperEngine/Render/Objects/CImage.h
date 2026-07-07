@@ -123,6 +123,7 @@ private:
 
     std::vector<Effects::CPass*> m_passes = {};
     std::vector<MaterialPassUniquePtr> m_virtualPassess = {};
+    std::vector<std::unique_ptr<TextureMap>> m_virtualBinds = {};
 
     glm::vec4 m_pos = {};
     glm::vec3 m_sceneCenter = {};

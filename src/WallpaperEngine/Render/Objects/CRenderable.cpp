@@ -19,8 +19,15 @@ void CRenderable::detectTexture () {
 
 	if (textureName.find ("_rt_") == 0 || textureName.find ("_alias_") == 0) {
 	    this->m_texture = this->getScene ().findFBO (textureName);
+	    // A literal "_rt_..." name hardcoded in an authored material file (as opposed to a
+	    // per-object buffer like "_rt_imageLayerComposite_<id>_a", which is only ever referenced
+	    // dynamically via effect "bind", never spelled out in a material) is always one of the
+	    // scene-wide shared render targets (e.g. "_rt_FullFrameBuffer") that bridge materials such
+	    // as "composelayer"/"passthrough"/"fullscreenlayer" use to read back the current composite.
+	    this->m_textureIsSharedRenderTarget = textureName.find ("_rt_") == 0;
 	} else {
 	    this->m_texture = this->getContext ().resolveTexture (textureName);
+	    this->m_textureIsSharedRenderTarget = false;
 	}
     }
 }
