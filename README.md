@@ -14,6 +14,7 @@ All engine credit goes to [@Almamu](https://github.com/Almamu) and upstream cont
 | GL fixes | Shader macro conflicts, float FBO formats, `composelayer` sizing, blit UV clamp — issues Apple's strict GL rejects but Mesa tolerates |
 | HDR | `hdr: true` scenes composite in float buffers, tonemapped once at the final blit |
 | Recording | `--record-dir` (PNG), `--record-raw` (RGBA stream for piping into an encoder, ~4x faster) |
+| Startup | macOS loads libmpv only when opening video content; `--help` and ordinary scenes do not load the video player |
 | Debugging | `--dump-passes`, `--gl-debug` |
 
 Requires the real Wallpaper Engine `assets` folder (`--assets-dir`, copy from your own Windows install). Missing assets abort with the file list instead of rendering black.
@@ -22,14 +23,14 @@ Requires the real Wallpaper Engine `assets` folder (`--assets-dir`, copy from yo
 
 ```bash
 brew install cmake lz4 sdl2 ffmpeg glfw glew glm mpv freetype
-cmake -B build/macos-scene -DCMAKE_BUILD_TYPE=Release
+cmake -B build/macos-scene -DCMAKE_BUILD_TYPE=Release -DWPENGINE_SCENE_ONLY=ON
 cmake --build build/macos-scene
 ```
 
 ## Record a scene
 
 ```bash
-./output/wwb-scene-renderer \
+./build/macos-scene/output/wwb-scene-renderer \
   --window 0x0x1920x1080 --silent --no-audio-processing --disable-mouse \
   --record-raw /tmp/frames.rgba --record-fps 30 --record-seconds 20 \
   --assets-dir "/path/to/wallpaper_engine/assets" \
@@ -40,6 +41,8 @@ ffmpeg -f rawvideo -pix_fmt rgba -s 1920x1080 -r 30 -i /tmp/frames.rgba \
 ```
 
 Recording flags: `--record-fps`, `--record-seconds`, `--record-exclude-live` (skip clocks etc.), exact `--window WxH` output.
+
+Use repeated `--render-debug skip-object=<id>` arguments to omit specific layers when a host app renders them live. The recording must be cached separately from a complete scene recording to avoid missing or doubled layers. Loading libmpv for a video texture still requires the matching Homebrew runtime; lazy loading does not add video-codec support.
 
 ## License
 

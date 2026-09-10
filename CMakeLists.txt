@@ -40,6 +40,12 @@ find_package(GLUT REQUIRED)
 find_package(ZLIB REQUIRED)
 find_package(SDL2 REQUIRED)
 find_package(MPV REQUIRED)
+set(MPV_LINK_LIBRARIES ${MPV_LIBRARY})
+if(APPLE)
+    set(MPV_LINK_LIBRARIES "")
+    list(GET MPV_LIBRARY 0 MPV_RUNTIME_LIBRARY)
+    add_compile_definitions(WWB_MPV_LIBRARY_PATH="${MPV_RUNTIME_LIBRARY}")
+endif()
 find_package(LZ4 REQUIRED)
 find_package(FFMPEG REQUIRED)
 find_package(Freetype REQUIRED)
@@ -621,7 +627,7 @@ target_link_libraries (linux-wallpaperengine-lib PUBLIC
     ${LZ4_LIBRARY}
     ${SDL2_LIBRARIES}
     ${FFMPEG_LIBRARIES}
-    ${MPV_LIBRARY}
+    ${MPV_LINK_LIBRARIES}
     Freetype::Freetype
     ${WAYLAND_LIBRARIES}
     ${X11_LIBRARIES}
@@ -656,7 +662,7 @@ if (BUILD_TESTING)
         ${LZ4_LIBRARY}
         ${SDL2_LIBRARIES}
         ${FFMPEG_LIBRARIES}
-        ${MPV_LIBRARY}
+        ${MPV_LINK_LIBRARIES}
         ${PULSEAUDIO_LIBRARY}
         Freetype::Freetype
         ${WAYLAND_LIBRARIES}
